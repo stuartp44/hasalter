@@ -9,6 +9,8 @@ import voluptuous as vol
 
 from .const import DOMAIN, CONF_ADDRESS, CONF_NAME, DEFAULT_NAME
 
+_LOGGER = logging.getLogger(__name__)
+
 def _looks_like_salter(service_info: BluetoothServiceInfoBleak) -> bool:
     name = (service_info.name or "").upper()
     if name.startswith("SALTER-BKT"):
