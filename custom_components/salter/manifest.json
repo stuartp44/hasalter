@@ -1,8 +1,9 @@
 {
   "bluetooth": [
     {
-      "manufacturer_id": 0,
-      "connectable": false
+      "connectable": false,
+      "local_name": "SALTER-BKT",
+      "manufacturer_id": 46080
     }
   ],
   "codeowners": [],
