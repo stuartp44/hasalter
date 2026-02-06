@@ -8,6 +8,10 @@ import voluptuous as vol
 from .const import DOMAIN, CONF_ADDRESS, CONF_NAME, DEFAULT_NAME
 
 def _looks_like_salter(service_info: BluetoothServiceInfoBleak) -> bool:
+    name = (service_info.name or "").upper()
+    if name.startswith("SALTER-BKT"):
+        return True
+
     mfd = service_info.manufacturer_data
     if not mfd:
         return False
