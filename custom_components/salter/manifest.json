@@ -1,0 +1,16 @@
+{
+  "bluetooth": [
+    {
+      "manufacturer_id": 0,
+      "connectable": false
+    }
+  ],
+  "codeowners": [],
+  "config_flow": true,
+  "dependencies": ["bluetooth"],
+  "documentation": "https://example.invalid",
+  "domain": "salter_ble",
+  "name": "Salter BLE (Advert)",
+  "requirements": [],
+  "version": "0.1.0"
+}
