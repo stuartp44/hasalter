@@ -16,16 +16,40 @@ _LOGGER = logging.getLogger(__name__)
 def _decode_temp(service_info: BluetoothServiceInfoBleak) -> float | None:
     mfd = service_info.manufacturer_data
     if not mfd:
+        _LOGGER.debug(
+            "No manufacturer data from %s (%s)",
+            service_info.name,
+            service_info.address,
+        )
         return None
 
     for _cid, payload in mfd.items():
         if not payload or len(payload) < 16:
+            _LOGGER.debug(
+                "Manufacturer data too short from %s (%s): %s",
+                service_info.name,
+                service_info.address,
+                payload,
+            )
             continue
 
         if payload[0:3] != b"\x01\x01\x01":
+            _LOGGER.debug(
+                "Manufacturer data header mismatch from %s (%s): %s",
+                service_info.name,
+                service_info.address,
+                payload,
+            )
             continue
 
         raw = payload[13] | (payload[14] << 8)
+        _LOGGER.debug(
+            "Decoded temperature from %s (%s): raw=%s temp=%.1f",
+            service_info.name,
+            service_info.address,
+            raw,
+            raw / 10.0,
+        )
         return raw / 10.0
 
     return None
@@ -59,10 +83,27 @@ class SalterBleTempSensor(SensorEntity):
         matcher = BluetoothCallbackMatcher(address=self._address)
 
         def _cb(service_info: BluetoothServiceInfoBleak, change):
+            _LOGGER.debug(
+                "Advert received from %s (%s) rssi=%s",
+                service_info.name,
+                service_info.address,
+                service_info.rssi,
+            )
             temp = _decode_temp(service_info)
             if temp is None:
+                _LOGGER.debug(
+                    "No valid temperature decoded from %s (%s)",
+                    service_info.name,
+                    service_info.address,
+                )
                 return
             if temp < -50 or temp > 100:
+                _LOGGER.debug(
+                    "Discarding out-of-range temperature from %s (%s): %.1f",
+                    service_info.name,
+                    service_info.address,
+                    temp,
+                )
                 return
 
             self._temp = round(temp, 1)

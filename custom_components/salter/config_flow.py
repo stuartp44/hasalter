@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import logging
+
 from homeassistant import config_entries
 from homeassistant.components.bluetooth import BluetoothServiceInfoBleak
 from homeassistant.helpers.selector import TextSelector, TextSelectorConfig
@@ -10,24 +12,51 @@ from .const import DOMAIN, CONF_ADDRESS, CONF_NAME, DEFAULT_NAME
 def _looks_like_salter(service_info: BluetoothServiceInfoBleak) -> bool:
     name = (service_info.name or "").upper()
     if name.startswith("SALTER-BKT"):
+        _LOGGER.debug(
+            "Matched Salter device by name: %s (%s)",
+            service_info.name,
+            service_info.address,
+        )
         return True
 
     mfd = service_info.manufacturer_data
     if not mfd:
+        _LOGGER.debug(
+            "No manufacturer data for %s (%s)",
+            service_info.name,
+            service_info.address,
+        )
         return False
 
     addr = (service_info.address or "").replace(":", "").lower()
 
     for _cid, payload in mfd.items():
         if not payload or len(payload) < 16:
+            _LOGGER.debug(
+                "Manufacturer data too short for %s (%s): %s",
+                service_info.name,
+                service_info.address,
+                payload,
+            )
             continue
 
         if payload[0:3] != b"\x01\x01\x01":
+            _LOGGER.debug(
+                "Manufacturer data header mismatch for %s (%s): %s",
+                service_info.name,
+                service_info.address,
+                payload,
+            )
             continue
 
         if len(addr) == 12:
             rev_mac = bytes.fromhex("".join([addr[i:i+2] for i in range(10, -2, -2)]))
             if payload[4:10] != rev_mac:
+                _LOGGER.debug(
+                    "Manufacturer data MAC mismatch for %s (%s)",
+                    service_info.name,
+                    service_info.address,
+                )
                 continue
 
         return True
@@ -40,9 +69,19 @@ class SalterBleConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
     async def async_step_bluetooth(self, discovery_info: BluetoothServiceInfoBleak):
         if not _looks_like_salter(discovery_info):
+            _LOGGER.debug(
+                "Bluetooth discovery ignored for %s (%s)",
+                discovery_info.name,
+                discovery_info.address,
+            )
             return self.async_abort(reason="not_supported")
 
         address = discovery_info.address.upper()
+        _LOGGER.debug(
+            "Bluetooth discovery accepted for %s (%s)",
+            discovery_info.name,
+            address,
+        )
         await self.async_set_unique_id(address)
         self._abort_if_unique_id_configured()
 
