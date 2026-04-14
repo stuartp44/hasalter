@@ -97,6 +97,11 @@ class SalterAlarmSensor(BinarySensorEntity):
         if alarm and alarm > 0 and temp is not None:
             return temp >= alarm
         return False
+    
+    @property
+    def available(self) -> bool:
+        """Entity is always available, shows off when alarm not set."""
+        return True
 
     async def async_added_to_hass(self):
         self._coordinator.register_callback(self._handle_update)
