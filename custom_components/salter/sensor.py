@@ -328,7 +328,8 @@ class SalterBleTempSensor(SensorEntity):
         self._coordinator = coordinator
         self._probe_num = probe_num
         self._name = name
-        self._attr_name = f"{name} Probe {probe_num}"
+        probe_name = "Left Probe" if probe_num == 1 else "Right Probe"
+        self._attr_name = f"{name} {probe_name}"
         self._attr_unique_id = f"{DOMAIN}_{coordinator._address.replace(':','')}_temp{probe_num}"
     
     @property
