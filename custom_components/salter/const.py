@@ -1,5 +1,5 @@
 DOMAIN = "salter"
-PLATFORMS = ["sensor", "button"]
+PLATFORMS = ["sensor", "button", "binary_sensor"]
 
 CONF_ADDRESS = "address"
 CONF_NAME = "name"

@@ -86,6 +86,11 @@ class SalterBleCoordinator:
             await self._client.disconnect()
             _LOGGER.info("Disconnected from %s", self._address)
 
+    @property
+    def is_connected(self) -> bool:
+        """Return True if connected to the device."""
+        return self._client is not None and self._client.is_connected
+
     async def _maintain_connection(self):
         while self._should_connect:
             if self._manual_disconnect:
@@ -122,12 +127,15 @@ class SalterBleCoordinator:
         await self._client.connect()
         
         _LOGGER.info("Connected to %s", self._address)
+        
+        for callback in self._callbacks:
+            callback()
 
         await self._client.start_notify(FFE1_UUID, self._handle_notification)
         _LOGGER.debug("Enabled notifications on FFE1")
 
         await self._client.write_gatt_char(FFE1_UUID, INIT_CMD, response=False)
-        _LOGGER.debug("Sent INIT command")
+        _LOGGER.debug("Sent INIT command to %s: %s", self._address, INIT_CMD.hex())
 
         self._cancel_poll = async_track_time_interval(
             self.hass,
@@ -143,22 +151,37 @@ class SalterBleCoordinator:
         if self._cancel_poll:
             self._cancel_poll()
             self._cancel_poll = None
-        self._trigger_callbacks()
+        
+        for callback in self._callbacks:
+            callback()
 
     async def _disconnect(self):
         if self._client and self._client.is_connected:
             await self._client.disconnect()
         self._client = None
+        
+        for callback in self._callbacks:
+            callback()
+    
     async def _send_poll(self, _):
         if self._client and self._client.is_connected:
             try:
                 await self._client.write_gatt_char(FFE1_UUID, POLL_CMD, response=False)
-                _LOGGER.debug("Sent POLL command")
+                _LOGGER.debug("Sent POLL command to %s: %s", self._address, POLL_CMD.hex())
             except BleakError as e:
                 _LOGGER.warning("Failed to send poll: %s", e)
 
     def _handle_notification(self, _handle, data: bytearray):
+        _LOGGER.debug(
+            "Received notification from %s: length=%d, hex=%s, bytes=%s",
+            self._address,
+            len(data),
+            data.hex(),
+            list(data)
+        )
+        
         if len(data) < 7:
+            _LOGGER.debug("Data too short (length %d)", len(data))
             return
         if data[0] != 0x08 or data[2] != 0x06:
             _LOGGER.debug("Unexpected notification format: %s", data.hex())
@@ -169,7 +192,14 @@ class SalterBleCoordinator:
         self._temp1 = raw1 / 10.0
         self._temp2 = raw2 / 10.0
 
-        _LOGGER.debug("Received temps: %.1f°C, %.1f°C", self._temp1, self._temp2)
+        _LOGGER.debug(
+            "Parsed temps from %s: raw1=%d (%.1f°C), raw2=%d (%.1f°C)",
+            self._address,
+            raw1,
+            self._temp1,
+            raw2,
+            self._temp2
+        )
 
         for callback in self._callbacks:
             callback()
@@ -190,7 +220,7 @@ class SalterBleTempSensor(SensorEntity):
             "identifiers": {(DOMAIN, coordinator._address)},
             "name": name,
             "manufacturer": "Salter",
-            "model": "BKT",
+            "model": "Cook",
             "connections": {(dr.CONNECTION_BLUETOOTH, coordinator._address)},
         }
 
@@ -201,7 +231,7 @@ class SalterBleTempSensor(SensorEntity):
         else:
             temp = self._coordinator._temp2
         
-        if temp is not None and -50 <= temp <= 100:
+        if temp is not None and -20 <= temp <= 250:
             return round(temp, 1)
         return None
 

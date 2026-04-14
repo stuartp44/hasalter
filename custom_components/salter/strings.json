@@ -9,7 +9,7 @@
           "address": "Device Address",
           "name": "Device Name"
         },
-        "description": "Select or enter the Bluetooth address of your Salter BKT device"
+        "description": "Select or enter the Bluetooth address of your Salter device"
       }
     },
     "abort": {
