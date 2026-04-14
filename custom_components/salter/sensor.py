@@ -158,10 +158,10 @@ class SalterBleCoordinator:
 
         _LOGGER.debug("Received temps: %.1f°C, %.1f°C", self._temp1, self._temp2)
 
-        self._trigger_callbacks()
+        for callback in self._callbacks:
+            callback()
 
-for callback in self._callbacks:
-            callback
+
 class SalterBleTempSensor(SensorEntity):
     _attr_native_unit_of_measurement = UnitOfTemperature.CELSIUS
     _attr_device_class = "temperature"
