@@ -1,4 +1,6 @@
 {
+  "domain": "salter",
+  "name": "Salter BLE (Advert)",
   "bluetooth": [
     {
       "connectable": false,
@@ -10,10 +12,8 @@
   "config_flow": true,
   "dependencies": ["bluetooth"],
   "documentation": "https://github.com/stuartp44/hasalter",
-  "domain": "salter",
   "iot_class": "local_push",
   "issue_tracker": "https://github.com/stuartp44/hasalter/issues",
-  "name": "Salter BLE (Advert)",
   "requirements": [],
   "version": "0.1.0"
 }
