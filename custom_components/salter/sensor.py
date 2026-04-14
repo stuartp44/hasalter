@@ -96,11 +96,14 @@ class SalterBleCoordinator:
             return False
         
         try:
-            # Command format: 09 03 0A [probe] [temperature]
+            # Command format: 09 03 0A [probe] [temp_high] [temp_low]
+            # Temperature is sent as 16-bit big-endian value (multiplied by 10)
             # probe: 01 for probe 1, 02 for probe 2
-            cmd = bytes([0x09, 0x03, 0x0A, probe_num, temperature])
+            temp_value = temperature * 10
+            cmd = bytes([0x09, 0x03, 0x0A, probe_num, (temp_value >> 8) & 0xFF, temp_value & 0xFF])
             await self._client.write_gatt_char(FFE1_UUID, cmd, response=False)
-            _LOGGER.info("Set alarm setpoint for probe %d to %d°C for %s", probe_num, temperature, self._address)
+            _LOGGER.info("Set alarm setpoint for probe %d to %d°C (raw=%d) for %s", 
+                        probe_num, temperature, temp_value, self._address)
             
             if probe_num == 1:
                 self._alarm_setpoint1 = temperature
@@ -219,11 +222,14 @@ class SalterBleCoordinator:
         
         # INIT response (0x09) - contains configuration data (alarm setpoint, etc)
         if data[2] == 0x09:
-            if len(data) >= 11:
-                self._alarm_setpoint1 = data[9]
-                self._alarm_setpoint2 = data[10]
-                _LOGGER.debug("Parsed alarm setpoints from %s: Probe 1=%d°C, Probe 2=%d°C", 
-                             self._address, self._alarm_setpoint1, self._alarm_setpoint2)
+            if len(data) >= 9:
+                # Alarm setpoints are 16-bit big-endian values at bytes 5-6 and 7-8, divided by 10
+                raw_alarm1 = (data[5] << 8) | data[6]
+                raw_alarm2 = (data[7] << 8) | data[8]
+                self._alarm_setpoint1 = raw_alarm1 // 10
+                self._alarm_setpoint2 = raw_alarm2 // 10
+                _LOGGER.debug("Parsed alarm setpoints from %s: Probe 1=%d°C (raw=%d), Probe 2=%d°C (raw=%d)", 
+                             self._address, self._alarm_setpoint1, raw_alarm1, self._alarm_setpoint2, raw_alarm2)
                 for callback in self._callbacks:
                     callback()
             else:
