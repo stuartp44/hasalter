@@ -3,111 +3,103 @@ from __future__ import annotations
 import logging
 
 from homeassistant import config_entries
-from homeassistant.components.bluetooth import BluetoothServiceInfoBleak
-from homeassistant.helpers.selector import TextSelector, TextSelectorConfig
+from homeassistant.components.bluetooth import (
+    BluetoothServiceInfoBleak,
+    async_discovered_service_info,
+)
+from homeassistant.data_entry_flow import FlowResult
 import voluptuous as vol
 
 from .const import DOMAIN, CONF_ADDRESS, CONF_NAME, DEFAULT_NAME
 
 _LOGGER = logging.getLogger(__name__)
 
-def _looks_like_salter(service_info: BluetoothServiceInfoBleak) -> bool:
-    name = (service_info.name or "").upper()
-    if name.startswith("SALTER-BKT"):
-        _LOGGER.debug(
-            "Matched Salter device by name: %s (%s)",
-            service_info.name,
-            service_info.address,
-        )
-        return True
-
-    mfd = service_info.manufacturer_data
-    if not mfd:
-        _LOGGER.debug(
-            "No manufacturer data for %s (%s)",
-            service_info.name,
-            service_info.address,
-        )
-        return False
-
-    addr = (service_info.address or "").replace(":", "").lower()
-
-    for _cid, payload in mfd.items():
-        if not payload or len(payload) < 16:
-            _LOGGER.debug(
-                "Manufacturer data too short for %s (%s): %s",
-                service_info.name,
-                service_info.address,
-                payload,
-            )
-            continue
-
-        if payload[0:3] != b"\x01\x01\x01":
-            _LOGGER.debug(
-                "Manufacturer data header mismatch for %s (%s): %s",
-                service_info.name,
-                service_info.address,
-                payload,
-            )
-            continue
-
-        if len(addr) == 12:
-            rev_mac = bytes.fromhex("".join([addr[i:i+2] for i in range(10, -2, -2)]))
-            if payload[4:10] != rev_mac:
-                _LOGGER.debug(
-                    "Manufacturer data MAC mismatch for %s (%s)",
-                    service_info.name,
-                    service_info.address,
-                )
-                continue
-
-        return True
-
-    return False
-
 
 class SalterBleConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     VERSION = 1
 
-    async def async_step_bluetooth(self, discovery_info: BluetoothServiceInfoBleak):
-        if not _looks_like_salter(discovery_info):
-            _LOGGER.debug(
-                "Bluetooth discovery ignored for %s (%s)",
-                discovery_info.name,
-                discovery_info.address,
-            )
-            return self.async_abort(reason="not_supported")
+    def __init__(self):
+        self._discovery_info: BluetoothServiceInfoBleak | None = None
 
-        address = discovery_info.address.upper()
-        _LOGGER.debug(
-            "Bluetooth discovery accepted for %s (%s)",
-            discovery_info.name,
-            address,
-        )
-        await self.async_set_unique_id(address)
+    async def async_step_bluetooth(
+        self, discovery_info: BluetoothServiceInfoBleak
+    ) -> FlowResult:
+        """Handle bluetooth discovery."""
+        await self.async_set_unique_id(discovery_info.address)
         self._abort_if_unique_id_configured()
 
-        name = discovery_info.name or DEFAULT_NAME
-        self.context["title_placeholders"] = {"name": name}
+        self._discovery_info = discovery_info
+        
+        return await self.async_step_bluetooth_confirm()
 
-        return await self.async_step_user(
-            {"address": address, "name": name}
-        )
+    async def async_step_bluetooth_confirm(
+        self, user_input: dict | None = None
+    ) -> FlowResult:
+        """Confirm discovery."""
+        assert self._discovery_info is not None
+        discovery_info = self._discovery_info
 
-    async def async_step_user(self, user_input=None):
         if user_input is not None:
             return self.async_create_entry(
-                title=user_input.get("name", DEFAULT_NAME),
+                title=discovery_info.name or DEFAULT_NAME,
                 data={
-                    CONF_ADDRESS: user_input[CONF_ADDRESS],
+                    CONF_ADDRESS: discovery_info.address,
+                    CONF_NAME: discovery_info.name or DEFAULT_NAME,
+                },
+            )
+
+        self._set_confirm_only()
+        placeholders = {
+            "name": discovery_info.name or DEFAULT_NAME,
+            "address": discovery_info.address,
+        }
+        self.context["title_placeholders"] = placeholders
+        
+        return self.async_show_form(
+            step_id="bluetooth_confirm",
+            description_placeholders=placeholders,
+        )
+
+    async def async_step_user(
+        self, user_input: dict | None = None
+    ) -> FlowResult:
+        """Handle a flow initialized by the user."""
+        if user_input is not None:
+            address = user_input[CONF_ADDRESS].upper()
+            await self.async_set_unique_id(address)
+            self._abort_if_unique_id_configured()
+            
+            return self.async_create_entry(
+                title=user_input.get(CONF_NAME, DEFAULT_NAME),
+                data={
+                    CONF_ADDRESS: address,
                     CONF_NAME: user_input.get(CONF_NAME, DEFAULT_NAME),
                 },
             )
 
-        schema = vol.Schema(
-            {
-                vol.Required(CONF_ADDRESS): TextSelector(TextSelectorConfig()),
-                vol.Optional(CONF_NAME, default=DEFAULT_NAME): TextSelector(TextSelectorConfig()),
-            }
-        )
+        # Show discovered devices
+        discovered = async_discovered_service_info(self.hass)
+        salter_devices = [
+            info for info in discovered
+            if info.name and info.name.startswith("SALTER-BKT")
+        ]
+
+        if salter_devices:
+            schema = vol.Schema(
+                {
+                    vol.Required(CONF_ADDRESS): vol.In(
+                        {info.address: f"{info.name} ({info.address})" 
+                         for info in salter_devices}
+                    ),
+                    vol.Optional(CONF_NAME, default=DEFAULT_NAME): str,
+                }
+            )
+        else:
+            schema = vol.Schema(
+                {
+                    vol.Required(CONF_ADDRESS): str,
+                    vol.Optional(CONF_NAME, default=DEFAULT_NAME): str,
+                }
+            )
+
         return self.async_show_form(step_id="user", data_schema=schema)
