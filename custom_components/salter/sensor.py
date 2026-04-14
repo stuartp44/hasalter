@@ -102,7 +102,7 @@ class SalterBleCoordinator:
                 await self._connect_and_listen()
             except Exception as e:
                 if self._should_connect:
-                    _LOGGER.warning("Connection to %s lost: %s, reconnecting in 10s", self._address, e)
+                    _LOGGER.debug("Connection to %s lost: %s, will retry in 10s", self._address, e)
                     await asyncio.sleep(10)
 
     async def _connect_and_listen(self):
@@ -110,7 +110,7 @@ class SalterBleCoordinator:
             self.hass, self._address, connectable=True
         )
         if not self._ble_device:
-            _LOGGER.error("Device %s not found", self._address)
+            _LOGGER.debug("Device %s not found (may be sleeping or off)", self._address)
             await asyncio.sleep(30)
             return
 
