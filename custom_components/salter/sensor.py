@@ -101,6 +101,7 @@ class SalterBleCoordinator:
             # probe: 01 for probe 1, 02 for probe 2
             temp_value = temperature * 10
             cmd = bytes([0x09, 0x03, 0x0A, probe_num, (temp_value >> 8) & 0xFF, temp_value & 0xFF])
+            _LOGGER.debug("Sending SET ALARM command to %s: %s", self._address, cmd.hex())
             await self._client.write_gatt_char(FFE1_UUID, cmd, response=False)
             _LOGGER.info("Set alarm setpoint for probe %d to %d°C (raw=%d) for %s", 
                         probe_num, temperature, temp_value, self._address)
