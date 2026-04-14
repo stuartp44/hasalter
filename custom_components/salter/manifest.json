@@ -1,6 +1,6 @@
 {
   "domain": "salter",
-  "name": "Salter BLE (Advert)",
+  "name": "Salter",
   "bluetooth": [
     {
       "connectable": true,
