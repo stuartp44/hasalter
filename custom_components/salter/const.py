@@ -1,4 +1,4 @@
-DOMAIN = "salter_ble"
+DOMAIN = "salter"
 PLATFORMS = ["sensor"]
 
 CONF_ADDRESS = "address"
