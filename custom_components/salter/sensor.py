@@ -53,6 +53,7 @@ class SalterBleCoordinator:
         self._temp1: float | None = None
         self._temp2: float | None = None
         self._callbacks = []
+        self._should_connect = True
 
     def register_callback(self, callback):
         self._callbacks.append(callback)
@@ -61,6 +62,7 @@ class SalterBleCoordinator:
         self._reconnect_task = asyncio.create_task(self._maintain_connection())
 
     async def stop(self):
+        self._should_connect = False
         if self._cancel_poll:
             self._cancel_poll()
             self._cancel_poll = None
@@ -69,13 +71,25 @@ class SalterBleCoordinator:
             self._reconnect_task = None
         await self._disconnect()
 
+    async def disconnect(self):
+        """Stop keep-alive polling and disconnect gracefully."""
+        if self._cancel_poll:
+            self._cancel_poll()
+            self._cancel_poll = None
+            _LOGGER.info("Stopped keep-alive polling, device will sleep")
+        
+        if self._client and self._client.is_connected:
+            await self._client.disconnect()
+            _LOGGER.info("Disconnected from %s", self._address)
+
     async def _maintain_connection(self):
-        while True:
+        while self._should_connect:
             try:
                 await self._connect_and_listen()
             except Exception as e:
-                _LOGGER.warning("Connection to %s lost: %s, reconnecting in 10s", self._address, e)
-                await asyncio.sleep(10)
+                if self._should_connect:
+                    _LOGGER.warning("Connection to %s lost: %s, reconnecting in 10s", self._address, e)
+                    await asyncio.sleep(10)
 
     async def _connect_and_listen(self):
         self._ble_device = async_ble_device_from_address(
@@ -116,12 +130,12 @@ class SalterBleCoordinator:
         if self._cancel_poll:
             self._cancel_poll()
             self._cancel_poll = None
+        self._trigger_callbacks()
 
     async def _disconnect(self):
         if self._client and self._client.is_connected:
             await self._client.disconnect()
         self._client = None
-
     async def _send_poll(self, _):
         if self._client and self._client.is_connected:
             try:
@@ -144,10 +158,10 @@ class SalterBleCoordinator:
 
         _LOGGER.debug("Received temps: %.1f°C, %.1f°C", self._temp1, self._temp2)
 
-        for callback in self._callbacks:
-            callback()
+        self._trigger_callbacks()
 
-
+for callback in self._callbacks:
+            callback
 class SalterBleTempSensor(SensorEntity):
     _attr_native_unit_of_measurement = UnitOfTemperature.CELSIUS
     _attr_device_class = "temperature"
