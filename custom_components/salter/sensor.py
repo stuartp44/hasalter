@@ -222,10 +222,10 @@ class SalterBleCoordinator:
         
         # INIT response (0x09) - contains configuration data (alarm setpoint, etc)
         if data[2] == 0x09:
-            if len(data) >= 9:
-                # Alarm setpoints are 16-bit big-endian values at bytes 5-6 and 7-8, divided by 10
-                raw_alarm1 = (data[5] << 8) | data[6]
-                raw_alarm2 = (data[7] << 8) | data[8]
+            if len(data) >= 8:
+                # Alarm setpoints are 16-bit big-endian values at bytes 4-5 and 6-7, divided by 10
+                raw_alarm1 = (data[4] << 8) | data[5]
+                raw_alarm2 = (data[6] << 8) | data[7]
                 self._alarm_setpoint1 = raw_alarm1 // 10
                 self._alarm_setpoint2 = raw_alarm2 // 10
                 _LOGGER.debug("Parsed alarm setpoints from %s: Probe 1=%d°C (raw=%d), Probe 2=%d°C (raw=%d)", 
