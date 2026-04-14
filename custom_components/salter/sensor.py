@@ -54,6 +54,7 @@ class SalterBleCoordinator:
         self._reconnect_task = None
         self._temp1: float | None = None
         self._temp2: float | None = None
+        self._alarm_setpoint: int | None = None
         self._callbacks = []
         self._should_connect = True
         self._manual_disconnect = False
@@ -86,6 +87,25 @@ class SalterBleCoordinator:
         if self._client and self._client.is_connected:
             await self._client.disconnect()
             _LOGGER.info("Disconnected from %s", self._address)
+
+    async def set_alarm_setpoint(self, temperature: int):
+        """Set the temperature alarm setpoint."""
+        if not self._client or not self._client.is_connected:
+            _LOGGER.warning("Cannot set alarm: not connected to %s", self._address)
+            return False
+        
+        try:
+            # Command format: 09 03 0A [temperature]
+            cmd = bytes([0x09, 0x03, 0x0A, temperature])
+            await self._client.write_gatt_char(FFE1_UUID, cmd, response=False)
+            _LOGGER.info("Set alarm setpoint to %d°C for %s", temperature, self._address)
+            self._alarm_setpoint = temperature
+            for callback in self._callbacks:
+                callback()
+            return True
+        except BleakError as e:
+            _LOGGER.error("Failed to set alarm setpoint: %s", e)
+            return False
 
     @property
     def is_connected(self) -> bool:
@@ -185,8 +205,25 @@ class SalterBleCoordinator:
         if len(data) < 7:
             _LOGGER.debug("Data too short (length %d)", len(data))
             return
-        if data[0] != 0x08 or data[2] != 0x06:
-            _LOGGER.debug("Unexpected notification format: %s", data.hex())
+        
+        if data[0] != 0x08:
+            _LOGGER.debug("Unexpected message header: 0x%02x", data[0])
+            return
+        
+        # INIT response (0x09) - contains configuration data (alarm setpoint, etc)
+        if data[2] == 0x09:
+            if len(data) >= 10:
+                self._alarm_setpoint = data[9]
+                _LOGGER.debug("Parsed alarm setpoint from %s: %d°C", self._address, self._alarm_setpoint)
+                for callback in self._callbacks:
+                    callback()
+            else:
+                _LOGGER.debug("INIT response too short")
+            return
+        
+        # Temperature data (0x06)
+        if data[2] != 0x06:
+            _LOGGER.debug("Unexpected message type: 0x%02x", data[2])
             return
 
         raw1 = (data[3] << 8) | data[4]
