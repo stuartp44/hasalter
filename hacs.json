@@ -1,6 +1,5 @@
 {
   "name": "Salter BLE (Advert)",
   "content_in_root": false,
-  "domains": ["salter_ble"],
   "render_readme": true
 }

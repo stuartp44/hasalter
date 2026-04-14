@@ -9,8 +9,9 @@
   "codeowners": [],
   "config_flow": true,
   "dependencies": ["bluetooth"],
-  "documentation": "https://example.invalid",
+  "documentation": "https://github.com/stuartp44/hasalter",
   "domain": "salter_ble",
+  "issue_tracker": "https://github.com/stuartp44/hasalter/issues",
   "name": "Salter BLE (Advert)",
   "requirements": [],
   "version": "0.1.0"
