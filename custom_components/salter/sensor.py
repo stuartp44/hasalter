@@ -5,6 +5,7 @@ import logging
 from datetime import timedelta
 
 from bleak import BleakClient, BleakError
+from bleak_retry_connector import establish_connection
 
 from homeassistant.components import bluetooth
 from homeassistant.components.bluetooth import async_ble_device_from_address
@@ -120,11 +121,12 @@ class SalterBleCoordinator:
 
         _LOGGER.info("Connecting to %s", self._address)
         
-        self._client = BleakClient(
-            self._ble_device,
+        self._client = await establish_connection(
+            client_class=BleakClient,
+            device=self._ble_device,
+            name=self._address,
             disconnected_callback=self._on_disconnect,
         )
-        await self._client.connect()
         
         _LOGGER.info("Connected to %s", self._address)
         
