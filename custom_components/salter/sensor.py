@@ -4,17 +4,10 @@ import asyncio
 import logging
 from datetime import timedelta
 
-from bleak import BleakError
-from bleak.backends.device import BLEDevice
+from bleak import BleakClient, BleakError
 
 from homeassistant.components import bluetooth
-from homeassistant.components.bluetooth import (
-    async_ble_device_from_address,
-)
-from homeassistant.components.bluetooth.api import (
-    BleakClientWithServiceCache,
-    establish_connection,
-)
+from homeassistant.components.bluetooth import async_ble_device_from_address
 from homeassistant.components.sensor import SensorEntity
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import UnitOfTemperature
@@ -47,7 +40,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_e
     ], update_before_add=False)
     
     await coordinator.start()
-    return True
 
 
 class SalterBleCoordinator:
@@ -55,7 +47,7 @@ class SalterBleCoordinator:
         self.hass = hass
         self._address = address
         self._client = None
-        self._ble_device: BLEDevice | None = None
+        self._ble_device = None
         self._cancel_poll = None
         self._reconnect_task = None
         self._temp1: float | None = None
@@ -96,12 +88,11 @@ class SalterBleCoordinator:
 
         _LOGGER.info("Connecting to %s", self._address)
         
-        self._client = await establish_connection(
-            BleakClientWithServiceCache,
+        self._client = BleakClient(
             self._ble_device,
-            self._address,
-            self._on_disconnect,
+            disconnected_callback=self._on_disconnect,
         )
+        await self._client.connect()
         
         _LOGGER.info("Connected to %s", self._address)
 
