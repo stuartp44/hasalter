@@ -24,7 +24,7 @@ def _decode_temp(service_info: BluetoothServiceInfoBleak) -> float | None:
         return None
 
     for _cid, payload in mfd.items():
-        if not payload or len(payload) < 16:
+        if not payload or len(payload) < 17:
             _LOGGER.debug(
                 "Manufacturer data too short from %s (%s): %s",
                 service_info.name,
@@ -33,7 +33,7 @@ def _decode_temp(service_info: BluetoothServiceInfoBleak) -> float | None:
             )
             continue
 
-        if payload[0:3] != b"\x01\x01\x01":
+        if payload[2:5] != b"\x01\x01\x01":
             _LOGGER.debug(
                 "Manufacturer data header mismatch from %s (%s): %s",
                 service_info.name,
@@ -42,7 +42,7 @@ def _decode_temp(service_info: BluetoothServiceInfoBleak) -> float | None:
             )
             continue
 
-        raw = payload[13] | (payload[14] << 8)
+        raw = payload[15] | (payload[16] << 8)
         _LOGGER.debug(
             "Decoded temperature from %s (%s): raw=%s temp=%.1f",
             service_info.name,
