@@ -54,7 +54,8 @@ class SalterBleCoordinator:
         self._reconnect_task = None
         self._temp1: float | None = None
         self._temp2: float | None = None
-        self._alarm_setpoint: int | None = None
+        self._alarm_setpoint1: int | None = None
+        self._alarm_setpoint2: int | None = None
         self._callbacks = []
         self._should_connect = True
         self._manual_disconnect = False
@@ -88,18 +89,24 @@ class SalterBleCoordinator:
             await self._client.disconnect()
             _LOGGER.info("Disconnected from %s", self._address)
 
-    async def set_alarm_setpoint(self, temperature: int):
-        """Set the temperature alarm setpoint."""
+    async def set_alarm_setpoint(self, probe_num: int, temperature: int):
+        """Set the temperature alarm setpoint for a specific probe."""
         if not self._client or not self._client.is_connected:
             _LOGGER.warning("Cannot set alarm: not connected to %s", self._address)
             return False
         
         try:
-            # Command format: 09 03 0A [temperature]
-            cmd = bytes([0x09, 0x03, 0x0A, temperature])
+            # Command format: 09 03 0A [probe] [temperature]
+            # probe: 01 for probe 1, 02 for probe 2
+            cmd = bytes([0x09, 0x03, 0x0A, probe_num, temperature])
             await self._client.write_gatt_char(FFE1_UUID, cmd, response=False)
-            _LOGGER.info("Set alarm setpoint to %d°C for %s", temperature, self._address)
-            self._alarm_setpoint = temperature
+            _LOGGER.info("Set alarm setpoint for probe %d to %d°C for %s", probe_num, temperature, self._address)
+            
+            if probe_num == 1:
+                self._alarm_setpoint1 = temperature
+            else:
+                self._alarm_setpoint2 = temperature
+            
             for callback in self._callbacks:
                 callback()
             return True
@@ -212,9 +219,11 @@ class SalterBleCoordinator:
         
         # INIT response (0x09) - contains configuration data (alarm setpoint, etc)
         if data[2] == 0x09:
-            if len(data) >= 10:
-                self._alarm_setpoint = data[9]
-                _LOGGER.debug("Parsed alarm setpoint from %s: %d°C", self._address, self._alarm_setpoint)
+            if len(data) >= 11:
+                self._alarm_setpoint1 = data[9]
+                self._alarm_setpoint2 = data[10]
+                _LOGGER.debug("Parsed alarm setpoints from %s: Probe 1=%d°C, Probe 2=%d°C", 
+                             self._address, self._alarm_setpoint1, self._alarm_setpoint2)
                 for callback in self._callbacks:
                     callback()
             else:

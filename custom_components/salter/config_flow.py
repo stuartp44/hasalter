@@ -41,16 +41,16 @@ class SalterBleConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
         if user_input is not None:
             return self.async_create_entry(
-                title=discovery_info.name or DEFAULT_NAME,
+                title=DEFAULT_NAME,
                 data={
                     CONF_ADDRESS: discovery_info.address,
-                    CONF_NAME: discovery_info.name or DEFAULT_NAME,
+                    CONF_NAME: DEFAULT_NAME,
                 },
             )
 
         self._set_confirm_only()
         placeholders = {
-            "name": discovery_info.name or DEFAULT_NAME,
+            "name": DEFAULT_NAME,
             "address": discovery_info.address,
         }
         self.context["title_placeholders"] = placeholders

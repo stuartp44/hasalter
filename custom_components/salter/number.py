@@ -18,7 +18,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_e
     name = entry.data.get(CONF_NAME, DEFAULT_NAME)
     
     async_add_entities([
-        SalterAlarmSetpoint(coordinator, name),
+        SalterAlarmSetpoint(coordinator, name, 1),
+        SalterAlarmSetpoint(coordinator, name, 2),
     ])
 
 
@@ -30,10 +31,11 @@ class SalterAlarmSetpoint(NumberEntity):
     _attr_mode = NumberMode.BOX
     _attr_icon = "mdi:thermometer-alert"
 
-    def __init__(self, coordinator, name: str):
+    def __init__(self, coordinator, name: str, probe_num: int):
         self._coordinator = coordinator
-        self._attr_name = f"{name} Alarm Temperature"
-        self._attr_unique_id = f"{DOMAIN}_{coordinator._address.replace(':','')}_alarm"
+        self._probe_num = probe_num
+        self._attr_name = f"{name} Alarm Temperature {probe_num}"
+        self._attr_unique_id = f"{DOMAIN}_{coordinator._address.replace(':','')}_alarm_{probe_num}"
         self._attr_device_info = {
             "identifiers": {(DOMAIN, coordinator._address)},
             "name": name,
@@ -44,11 +46,14 @@ class SalterAlarmSetpoint(NumberEntity):
 
     @property
     def native_value(self):
-        return self._coordinator._alarm_setpoint
+        if self._probe_num == 1:
+            return self._coordinator._alarm_setpoint1
+        else:
+            return self._coordinator._alarm_setpoint2
 
     async def async_set_native_value(self, value: float):
         """Set the alarm temperature."""
-        await self._coordinator.set_alarm_setpoint(int(value))
+        await self._coordinator.set_alarm_setpoint(self._probe_num, int(value))
 
     async def async_added_to_hass(self):
         self._coordinator.register_callback(self._handle_update)
