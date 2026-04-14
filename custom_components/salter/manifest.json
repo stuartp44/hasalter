@@ -3,7 +3,7 @@
   "name": "Salter BLE (Advert)",
   "bluetooth": [
     {
-      "connectable": false,
+      "connectable": true,
       "local_name": "SALTER-BKT",
       "manufacturer_id": 46080
     }
