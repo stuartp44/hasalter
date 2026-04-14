@@ -35,7 +35,7 @@ class SalterAlarmSetpoint(NumberEntity):
         self._coordinator = coordinator
         self._probe_num = probe_num
         self._name = name
-        probe_name = "Left" if probe_num == 1 else "Right"
+        probe_name = "Left Probe" if probe_num == 1 else "Right Probe"
         self._attr_name = f"{name} {probe_name} Alarm"
         self._attr_unique_id = f"{DOMAIN}_{coordinator._address.replace(':','')}_alarm_{probe_num}"
     
