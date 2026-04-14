@@ -30,7 +30,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_e
     address = entry.data[CONF_ADDRESS].upper()
     name = entry.data.get(CONF_NAME, DEFAULT_NAME)
     
-    coordinator = SalterBleCoordinator(hass, address)
+    coordinator = SalterBleCoordinator(hass, address, entry.entry_id)
     
     if DOMAIN not in hass.data:
         hass.data[DOMAIN] = {}
@@ -45,9 +45,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_e
 
 
 class SalterBleCoordinator:
-    def __init__(self, hass: HomeAssistant, address: str):
+    def __init__(self, hass: HomeAssistant, address: str, entry_id: str):
         self.hass = hass
         self._address = address
+        self._entry_id = entry_id
         self._client = None
         self._ble_device = None
         self._cancel_poll = None
@@ -184,8 +185,13 @@ class SalterBleCoordinator:
         # Read serial number from Device Information Service (0x2A25)
         try:
             sn_bytes = await self._client.read_gatt_char("00002a25-0000-1000-8000-00805f9b34fb")
-            self._serial_number = sn_bytes.decode('utf-8', errors='ignore').strip()
-            _LOGGER.debug("Read serial number from %s: %s", self._address, self._serial_number)
+            sn = sn_bytes.decode('utf-8', errors='ignore').strip()
+            # Ignore placeholder value
+            if sn and sn.lower() != "serial number":
+                self._serial_number = sn
+                _LOGGER.debug("Read serial number from %s: %s", self._address, self._serial_number)
+            else:
+                self._serial_number = None
         except Exception as e:
             _LOGGER.debug("Could not read serial number: %s", e)
             self._serial_number = None
@@ -198,6 +204,20 @@ class SalterBleCoordinator:
         except Exception as e:
             _LOGGER.debug("Could not read hardware version: %s", e)
             self._hardware_version = None
+        
+        # Update device registry with the read information
+        if self._firmware_version or self._serial_number or self._hardware_version:
+            device_registry = dr.async_get(self.hass)
+            device_registry.async_get_or_create(
+                config_entry_id=self._entry_id,
+                identifiers={(DOMAIN, self._address)},
+                manufacturer="Salter",
+                model="Cook",
+                sw_version=self._firmware_version,
+                hw_version=self._hardware_version,
+                serial_number=self._serial_number,
+                connections={(dr.CONNECTION_BLUETOOTH, self._address)},
+            )
         
         for callback in self._callbacks:
             callback()
