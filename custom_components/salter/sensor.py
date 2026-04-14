@@ -56,6 +56,9 @@ class SalterBleCoordinator:
         self._temp2: float | None = None
         self._alarm_setpoint1: int | None = None
         self._alarm_setpoint2: int | None = None
+        self._firmware_version: str | None = None
+        self._serial_number: str | None = None
+        self._hardware_version: str | None = None
         self._callbacks = []
         self._should_connect = True
         self._manual_disconnect = False
@@ -96,8 +99,7 @@ class SalterBleCoordinator:
             return False
         
         try:
-            # Command format: 09 03 0A [alarm1_high] [alarm1_low] [alarm2_high] [alarm2_low]
-            # Both alarm values must be sent together
+            # Try different command formats to find what works
             # Temperature is sent as 16-bit big-endian value (multiplied by 10)
             if probe_num == 1:
                 temp1_value = temperature * 10
@@ -106,10 +108,11 @@ class SalterBleCoordinator:
                 temp1_value = (self._alarm_setpoint1 or 100) * 10
                 temp2_value = temperature * 10
             
-            cmd = bytes([0x09, 0x03, 0x0A, 
+            # Format 1: Try command 0x03 instead of 0x0A
+            cmd = bytes([0x09, 0x03, 0x03, 
                         (temp1_value >> 8) & 0xFF, temp1_value & 0xFF,
                         (temp2_value >> 8) & 0xFF, temp2_value & 0xFF])
-            _LOGGER.debug("Sending SET ALARM command to %s: %s", self._address, cmd.hex())
+            _LOGGER.debug("Sending SET ALARM command (format 1: cmd=0x03) to %s: %s", self._address, cmd.hex())
             await self._client.write_gatt_char(FFE1_UUID, cmd, response=False)
             _LOGGER.info("Set alarm setpoints for %s: Probe 1=%d°C, Probe 2=%d°C", 
                         self._address, temp1_value // 10, temp2_value // 10)
@@ -168,6 +171,33 @@ class SalterBleCoordinator:
         )
         
         _LOGGER.info("Connected to %s", self._address)
+        
+        # Read firmware version from Device Information Service (0x2A26)
+        try:
+            fw_bytes = await self._client.read_gatt_char("00002a26-0000-1000-8000-00805f9b34fb")
+            self._firmware_version = fw_bytes.decode('utf-8', errors='ignore').strip()
+            _LOGGER.debug("Read firmware version from %s: %s", self._address, self._firmware_version)
+        except Exception as e:
+            _LOGGER.debug("Could not read firmware version: %s", e)
+            self._firmware_version = None
+        
+        # Read serial number from Device Information Service (0x2A25)
+        try:
+            sn_bytes = await self._client.read_gatt_char("00002a25-0000-1000-8000-00805f9b34fb")
+            self._serial_number = sn_bytes.decode('utf-8', errors='ignore').strip()
+            _LOGGER.debug("Read serial number from %s: %s", self._address, self._serial_number)
+        except Exception as e:
+            _LOGGER.debug("Could not read serial number: %s", e)
+            self._serial_number = None
+        
+        # Read hardware revision from Device Information Service (0x2A27)
+        try:
+            hw_bytes = await self._client.read_gatt_char("00002a27-0000-1000-8000-00805f9b34fb")
+            self._hardware_version = hw_bytes.decode('utf-8', errors='ignore').strip()
+            _LOGGER.debug("Read hardware version from %s: %s", self._address, self._hardware_version)
+        except Exception as e:
+            _LOGGER.debug("Could not read hardware version: %s", e)
+            self._hardware_version = None
         
         for callback in self._callbacks:
             callback()
@@ -277,14 +307,21 @@ class SalterBleTempSensor(SensorEntity):
     def __init__(self, coordinator: SalterBleCoordinator, name: str, probe_num: int):
         self._coordinator = coordinator
         self._probe_num = probe_num
+        self._name = name
         self._attr_name = f"{name} Probe {probe_num}"
         self._attr_unique_id = f"{DOMAIN}_{coordinator._address.replace(':','')}_temp{probe_num}"
-        self._attr_device_info = {
-            "identifiers": {(DOMAIN, coordinator._address)},
-            "name": name,
+    
+    @property
+    def device_info(self):
+        return {
+            "identifiers": {(DOMAIN, self._coordinator._address)},
+            "name": self._name,
             "manufacturer": "Salter",
             "model": "Cook",
-            "connections": {(dr.CONNECTION_BLUETOOTH, coordinator._address)},
+            "sw_version": self._coordinator._firmware_version,
+            "hw_version": self._coordinator._hardware_version,
+            "serial_number": self._coordinator._serial_number,
+            "connections": {(dr.CONNECTION_BLUETOOTH, self._coordinator._address)},
         }
 
     @property

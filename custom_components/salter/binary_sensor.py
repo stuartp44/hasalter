@@ -29,14 +29,21 @@ class SalterConnectionSensor(BinarySensorEntity):
 
     def __init__(self, coordinator, name: str):
         self._coordinator = coordinator
+        self._name = name
         self._attr_name = f"{name} Connection"
         self._attr_unique_id = f"{DOMAIN}_{coordinator._address.replace(':','')}_connection"
-        self._attr_device_info = {
-            "identifiers": {(DOMAIN, coordinator._address)},
-            "name": name,
+    
+    @property
+    def device_info(self):
+        return {
+            "identifiers": {(DOMAIN, self._coordinator._address)},
+            "name": self._name,
             "manufacturer": "Salter",
             "model": "Cook",
-            "connections": {(dr.CONNECTION_BLUETOOTH, coordinator._address)},
+            "sw_version": self._coordinator._firmware_version,
+            "hw_version": self._coordinator._hardware_version,
+            "serial_number": self._coordinator._serial_number,
+            "connections": {(dr.CONNECTION_BLUETOOTH, self._coordinator._address)},
         }
 
     @property
