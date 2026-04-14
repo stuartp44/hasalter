@@ -12,6 +12,7 @@ from homeassistant.components.sensor import SensorEntity
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import UnitOfTemperature
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers.event import async_track_time_interval
 
 from .const import DOMAIN, CONF_ADDRESS, CONF_NAME, DEFAULT_NAME
@@ -54,6 +55,7 @@ class SalterBleCoordinator:
         self._temp2: float | None = None
         self._callbacks = []
         self._should_connect = True
+        self._manual_disconnect = False
 
     def register_callback(self, callback):
         self._callbacks.append(callback)
@@ -73,6 +75,8 @@ class SalterBleCoordinator:
 
     async def disconnect(self):
         """Stop keep-alive polling and disconnect gracefully."""
+        self._manual_disconnect = True
+        
         if self._cancel_poll:
             self._cancel_poll()
             self._cancel_poll = None
@@ -84,6 +88,11 @@ class SalterBleCoordinator:
 
     async def _maintain_connection(self):
         while self._should_connect:
+            if self._manual_disconnect:
+                _LOGGER.debug("Manual disconnect active, waiting for device to be turned back on")
+                await asyncio.sleep(5)
+                continue
+            
             try:
                 await self._connect_and_listen()
             except Exception as e:
@@ -99,6 +108,10 @@ class SalterBleCoordinator:
             _LOGGER.error("Device %s not found", self._address)
             await asyncio.sleep(30)
             return
+
+        if self._manual_disconnect:
+            _LOGGER.info("Device %s detected, clearing manual disconnect", self._address)
+            self._manual_disconnect = False
 
         _LOGGER.info("Connecting to %s", self._address)
         
@@ -173,6 +186,13 @@ class SalterBleTempSensor(SensorEntity):
         self._probe_num = probe_num
         self._attr_name = f"{name} Probe {probe_num}"
         self._attr_unique_id = f"{DOMAIN}_{coordinator._address.replace(':','')}_temp{probe_num}"
+        self._attr_device_info = {
+            "identifiers": {(DOMAIN, coordinator._address)},
+            "name": name,
+            "manufacturer": "Salter",
+            "model": "BKT",
+            "connections": {(dr.CONNECTION_BLUETOOTH, coordinator._address)},
+        }
 
     @property
     def native_value(self):

@@ -5,6 +5,7 @@ import logging
 from homeassistant.components.button import ButtonEntity
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers import device_registry as dr
 
 from .const import DOMAIN, CONF_NAME, DEFAULT_NAME
 
@@ -26,6 +27,13 @@ class SalterDisconnectButton(ButtonEntity):
         self._attr_name = f"{name} Disconnect"
         self._attr_unique_id = f"{DOMAIN}_{coordinator._address.replace(':','')}_disconnect"
         self._attr_icon = "mdi:bluetooth-off"
+        self._attr_device_info = {
+            "identifiers": {(DOMAIN, coordinator._address)},
+            "name": name,
+            "manufacturer": "Salter",
+            "model": "BKT",
+            "connections": {(dr.CONNECTION_BLUETOOTH, coordinator._address)},
+        }
 
     async def async_press(self):
         _LOGGER.info("Disconnect button pressed")
