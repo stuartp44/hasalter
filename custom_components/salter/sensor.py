@@ -96,15 +96,23 @@ class SalterBleCoordinator:
             return False
         
         try:
-            # Command format: 09 03 0A [probe] [temp_high] [temp_low]
+            # Command format: 09 03 0A [alarm1_high] [alarm1_low] [alarm2_high] [alarm2_low]
+            # Both alarm values must be sent together
             # Temperature is sent as 16-bit big-endian value (multiplied by 10)
-            # probe: 01 for probe 1, 02 for probe 2
-            temp_value = temperature * 10
-            cmd = bytes([0x09, 0x03, 0x0A, probe_num, (temp_value >> 8) & 0xFF, temp_value & 0xFF])
+            if probe_num == 1:
+                temp1_value = temperature * 10
+                temp2_value = (self._alarm_setpoint2 or 100) * 10
+            else:
+                temp1_value = (self._alarm_setpoint1 or 100) * 10
+                temp2_value = temperature * 10
+            
+            cmd = bytes([0x09, 0x03, 0x0A, 
+                        (temp1_value >> 8) & 0xFF, temp1_value & 0xFF,
+                        (temp2_value >> 8) & 0xFF, temp2_value & 0xFF])
             _LOGGER.debug("Sending SET ALARM command to %s: %s", self._address, cmd.hex())
             await self._client.write_gatt_char(FFE1_UUID, cmd, response=False)
-            _LOGGER.info("Set alarm setpoint for probe %d to %d°C (raw=%d) for %s", 
-                        probe_num, temperature, temp_value, self._address)
+            _LOGGER.info("Set alarm setpoints for %s: Probe 1=%d°C, Probe 2=%d°C", 
+                        self._address, temp1_value // 10, temp2_value // 10)
             
             if probe_num == 1:
                 self._alarm_setpoint1 = temperature
