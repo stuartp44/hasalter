@@ -62,6 +62,7 @@ class SalterBleCoordinator:
         self._callbacks = []
         self._should_connect = True
         self._manual_disconnect = False
+        self._powering_off = False
 
     def register_callback(self, callback):
         self._callbacks.append(callback)
@@ -183,6 +184,7 @@ class SalterBleCoordinator:
         if self._manual_disconnect:
             _LOGGER.info("Device %s detected, clearing manual disconnect", self._address)
             self._manual_disconnect = False
+            self._powering_off = False
 
         _LOGGER.info("Connecting to %s", self._address)
         
@@ -277,6 +279,10 @@ class SalterBleCoordinator:
             callback()
     
     async def _send_poll(self, _):
+        # Don't poll if device is powering off
+        if self._powering_off:
+            return
+            
         if self._client and self._client.is_connected:
             try:
                 await self._client.write_gatt_char(FFE1_UUID, POLL_CMD, response=False)
@@ -319,14 +325,16 @@ class SalterBleCoordinator:
         
         # Power off notification (0xaf) - device is shutting down
         if data[2] == 0xaf:
-            _LOGGER.info("Device %s is powering off (received shutdown notification)", self._address)
-            self._manual_disconnect = True
-            
-            # Stop polling immediately
-            if self._cancel_poll:
-                self._cancel_poll()
-                self._cancel_poll = None
-                _LOGGER.debug("Stopped keep-alive polling due to power off")
+            if not self._powering_off:  # Only process first power-off notification
+                _LOGGER.info("Device %s is powering off (received shutdown notification)", self._address)
+                self._powering_off = True
+                self._manual_disconnect = True
+                
+                # Stop polling immediately
+                if self._cancel_poll:
+                    self._cancel_poll()
+                    self._cancel_poll = None
+                    _LOGGER.debug("Stopped keep-alive polling due to power off")
             # Disconnect will happen naturally when device shuts down
             return
         
