@@ -31,11 +31,14 @@ class SalterBleConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         self._discovery_info = discovery_info
 
         # Log advertisement data to find firmware version
-        _LOGGER.debug("Discovery info for %s: name=%s, local_name=%s, manufacturer_data=%s, service_data=%s",
-                     discovery_info.address, discovery_info.name,
-                     getattr(discovery_info, 'local_name', None),
-                     discovery_info.manufacturer_data,
-                     getattr(discovery_info, 'service_data', {}))
+        _LOGGER.debug(
+            "Discovery info for %s: name=%s, local_name=%s, manufacturer_data=%s, service_data=%s",
+            discovery_info.address,
+            discovery_info.name,
+            getattr(discovery_info, "local_name", None),
+            discovery_info.manufacturer_data,
+            getattr(discovery_info, "service_data", {}),
+        )
 
         return await self.async_step_bluetooth_confirm()
 
@@ -67,9 +70,7 @@ class SalterBleConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             description_placeholders=placeholders,
         )
 
-    async def async_step_user(
-        self, user_input: dict | None = None
-    ) -> FlowResult:
+    async def async_step_user(self, user_input: dict | None = None) -> FlowResult:
         """Handle a flow initialized by the user."""
         if user_input is not None:
             address = user_input[CONF_ADDRESS].upper()
@@ -87,7 +88,8 @@ class SalterBleConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         # Show discovered devices
         discovered = async_discovered_service_info(self.hass)
         salter_devices = [
-            info for info in discovered
+            info
+            for info in discovered
             if info.name and info.name.startswith("SALTER-BKT")
         ]
 
@@ -95,8 +97,10 @@ class SalterBleConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             schema = vol.Schema(
                 {
                     vol.Required(CONF_ADDRESS): vol.In(
-                        {info.address: f"{info.name} ({info.address})"
-                         for info in salter_devices}
+                        {
+                            info.address: f"{info.name} ({info.address})"
+                            for info in salter_devices
+                        }
                     ),
                     vol.Optional(CONF_NAME, default=DEFAULT_NAME): str,
                 }

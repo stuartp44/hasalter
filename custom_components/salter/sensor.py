@@ -24,7 +24,9 @@ POLL_CMD = bytes([0x09, 0x03, 0x06])
 POLL_INTERVAL = timedelta(seconds=1)
 
 
-async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_entities):
+async def async_setup_entry(
+    hass: HomeAssistant, entry: ConfigEntry, async_add_entities
+):
     address = entry.data[CONF_ADDRESS].upper()
     name = entry.data.get(CONF_NAME, DEFAULT_NAME)
 
@@ -34,10 +36,13 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_e
         hass.data[DOMAIN] = {}
     hass.data[DOMAIN][entry.entry_id] = coordinator
 
-    async_add_entities([
-        SalterBleTempSensor(coordinator, name, 1),
-        SalterBleTempSensor(coordinator, name, 2),
-    ], update_before_add=False)
+    async_add_entities(
+        [
+            SalterBleTempSensor(coordinator, name, 1),
+            SalterBleTempSensor(coordinator, name, 2),
+        ],
+        update_before_add=False,
+    )
 
     await coordinator.start()
 
@@ -96,21 +101,24 @@ class SalterBleCoordinator:
         async def clear_manual_disconnect():
             await asyncio.sleep(62)
             if self._manual_disconnect:
-                _LOGGER.info("Clearing manual disconnect for %s, will auto-reconnect when device returns", self._address)
+                _LOGGER.info(
+                    "Clearing manual disconnect for %s, will auto-reconnect when device returns",
+                    self._address,
+                )
                 self._manual_disconnect = False
 
         asyncio.create_task(clear_manual_disconnect())
 
     async def set_alarm_setpoint(self, probe_num: int, temperature: int):
         """Set the temperature alarm setpoint for a specific probe.
-        
+
         Protocol discovered from BLE log analysis:
-        
+
         SET ALARM: 09 08 02 03 YY YY ZZ ZZ (8 bytes - sets BOTH probes)
         - Mode byte: 03 (set mode)
         - Bytes 4-5: Probe 1 temperature × 10 (16-bit big-endian)
         - Bytes 6-7: Probe 2 temperature × 10 (16-bit big-endian)
-        
+
         Note: Use clear_alarm() method to clear alarms instead of setting to 0.
         """
         if not self._client or not self._client.is_connected:
@@ -131,14 +139,25 @@ class SalterBleCoordinator:
             temp2_value = int(temp2 * 10)
 
             # Build 8-byte command with mode 03 (set)
-            cmd = bytes([
-                0x09, 0x08, 0x02, 0x03,
-                (temp1_value >> 8) & 0xFF, temp1_value & 0xFF,
-                (temp2_value >> 8) & 0xFF, temp2_value & 0xFF
-            ])
+            cmd = bytes(
+                [
+                    0x09,
+                    0x08,
+                    0x02,
+                    0x03,
+                    (temp1_value >> 8) & 0xFF,
+                    temp1_value & 0xFF,
+                    (temp2_value >> 8) & 0xFF,
+                    temp2_value & 0xFF,
+                ]
+            )
 
-            _LOGGER.info("Setting alarm setpoints for %s: Probe 1=%d°C, Probe 2=%d°C",
-                        self._address, temp1, temp2)
+            _LOGGER.info(
+                "Setting alarm setpoints for %s: Probe 1=%d°C, Probe 2=%d°C",
+                self._address,
+                temp1,
+                temp2,
+            )
             _LOGGER.debug("Command: %s", cmd.hex())
 
             await self._client.write_gatt_char(FFE1_UUID, cmd, response=False)
@@ -156,7 +175,7 @@ class SalterBleCoordinator:
 
     async def clear_alarm(self, probe_num: int):
         """Clear the temperature alarm for a specific probe.
-        
+
         Protocol:
         - Probe 1: 09 08 02 00 00 00 00 00 (mode 00, all zeros)
         - Probe 2: 09 08 02 01 00 fa 00 00 (mode 01, probe1=25°C, probe2=0)
@@ -173,7 +192,7 @@ class SalterBleCoordinator:
                 _LOGGER.info("Cleared alarm for probe 1 on %s", self._address)
             else:
                 # Clear probe 2: mode 01, probe1=25°C, probe2=0
-                cmd = bytes([0x09, 0x08, 0x02, 0x01, 0x00, 0xfa, 0x00, 0x00])
+                cmd = bytes([0x09, 0x08, 0x02, 0x01, 0x00, 0xFA, 0x00, 0x00])
                 self._alarm_setpoint2 = 0
                 _LOGGER.info("Cleared alarm for probe 2 on %s", self._address)
 
@@ -204,7 +223,12 @@ class SalterBleCoordinator:
             except Exception as e:
                 if self._should_connect:
                     sleep_time = 5 if self._device_powered_off else 10
-                    _LOGGER.debug("Connection to %s lost: %s, will retry in %ds", self._address, e, sleep_time)
+                    _LOGGER.debug(
+                        "Connection to %s lost: %s, will retry in %ds",
+                        self._address,
+                        e,
+                        sleep_time,
+                    )
                     await asyncio.sleep(sleep_time)
 
     async def _connect_and_listen(self):
@@ -235,21 +259,31 @@ class SalterBleCoordinator:
 
         # Read firmware version from Device Information Service (0x2A26)
         try:
-            fw_bytes = await self._client.read_gatt_char("00002a26-0000-1000-8000-00805f9b34fb")
-            self._firmware_version = fw_bytes.decode('utf-8', errors='ignore').strip()
-            _LOGGER.debug("Read firmware version from %s: %s", self._address, self._firmware_version)
+            fw_bytes = await self._client.read_gatt_char(
+                "00002a26-0000-1000-8000-00805f9b34fb"
+            )
+            self._firmware_version = fw_bytes.decode("utf-8", errors="ignore").strip()
+            _LOGGER.debug(
+                "Read firmware version from %s: %s",
+                self._address,
+                self._firmware_version,
+            )
         except Exception as e:
             _LOGGER.debug("Could not read firmware version: %s", e)
             self._firmware_version = None
 
         # Read serial number from Device Information Service (0x2A25)
         try:
-            sn_bytes = await self._client.read_gatt_char("00002a25-0000-1000-8000-00805f9b34fb")
-            sn = sn_bytes.decode('utf-8', errors='ignore').strip()
+            sn_bytes = await self._client.read_gatt_char(
+                "00002a25-0000-1000-8000-00805f9b34fb"
+            )
+            sn = sn_bytes.decode("utf-8", errors="ignore").strip()
             # Ignore placeholder value
             if sn and sn.lower() != "serial number":
                 self._serial_number = sn
-                _LOGGER.debug("Read serial number from %s: %s", self._address, self._serial_number)
+                _LOGGER.debug(
+                    "Read serial number from %s: %s", self._address, self._serial_number
+                )
             else:
                 self._serial_number = None
         except Exception as e:
@@ -258,9 +292,15 @@ class SalterBleCoordinator:
 
         # Read hardware revision from Device Information Service (0x2A27)
         try:
-            hw_bytes = await self._client.read_gatt_char("00002a27-0000-1000-8000-00805f9b34fb")
-            self._hardware_version = hw_bytes.decode('utf-8', errors='ignore').strip()
-            _LOGGER.debug("Read hardware version from %s: %s", self._address, self._hardware_version)
+            hw_bytes = await self._client.read_gatt_char(
+                "00002a27-0000-1000-8000-00805f9b34fb"
+            )
+            self._hardware_version = hw_bytes.decode("utf-8", errors="ignore").strip()
+            _LOGGER.debug(
+                "Read hardware version from %s: %s",
+                self._address,
+                self._hardware_version,
+            )
         except Exception as e:
             _LOGGER.debug("Could not read hardware version: %s", e)
             self._hardware_version = None
@@ -324,17 +364,19 @@ class SalterBleCoordinator:
         if self._client and self._client.is_connected:
             try:
                 await self._client.write_gatt_char(FFE1_UUID, POLL_CMD, response=False)
-                _LOGGER.debug("Sent POLL command to %s: %s", self._address, POLL_CMD.hex())
+                _LOGGER.debug(
+                    "Sent POLL command to %s: %s", self._address, POLL_CMD.hex()
+                )
             except BleakError as e:
                 _LOGGER.warning("Failed to send poll: %s", e)
 
-    def _handle_notification(self, _handle, data: bytearray):
+    def _handle_notification(self, _handle, data: bytearray):  # noqa: C901
         _LOGGER.debug(
             "Received notification from %s: length=%d, hex=%s, bytes=%s",
             self._address,
             len(data),
             data.hex(),
-            list(data)
+            list(data),
         )
 
         if len(data) < 7:
@@ -353,8 +395,14 @@ class SalterBleCoordinator:
                 raw_alarm2 = (data[6] << 8) | data[7]
                 self._alarm_setpoint1 = raw_alarm1 // 10
                 self._alarm_setpoint2 = raw_alarm2 // 10
-                _LOGGER.debug("Parsed alarm setpoints from %s: Probe 1=%d°C (raw=%d), Probe 2=%d°C (raw=%d)",
-                             self._address, self._alarm_setpoint1, raw_alarm1, self._alarm_setpoint2, raw_alarm2)
+                _LOGGER.debug(
+                    "Parsed alarm setpoints from %s: Probe 1=%d°C (raw=%d), Probe 2=%d°C (raw=%d)",
+                    self._address,
+                    self._alarm_setpoint1,
+                    raw_alarm1,
+                    self._alarm_setpoint2,
+                    raw_alarm2,
+                )
                 for callback in self._callbacks:
                     callback()
             else:
@@ -362,9 +410,14 @@ class SalterBleCoordinator:
             return
 
         # Power off notification (0xaf) - device is shutting down
-        if data[2] == 0xaf:
-            if not self._device_powered_off:  # Only process first power-off notification
-                _LOGGER.info("Device %s is powering off (received shutdown notification)", self._address)
+        if data[2] == 0xAF:
+            if (
+                not self._device_powered_off
+            ):  # Only process first power-off notification
+                _LOGGER.info(
+                    "Device %s is powering off (received shutdown notification)",
+                    self._address,
+                )
                 self._device_powered_off = True
 
                 # Stop polling immediately
@@ -395,7 +448,7 @@ class SalterBleCoordinator:
             raw1,
             self._temp1,
             raw2,
-            self._temp2
+            self._temp2,
         )
 
         for callback in self._callbacks:
@@ -414,7 +467,9 @@ class SalterBleTempSensor(SensorEntity):
         self._name = name
         probe_name = "Left Probe" if probe_num == 1 else "Right Probe"
         self._attr_name = f"{name} {probe_name}"
-        self._attr_unique_id = f"{DOMAIN}_{coordinator._address.replace(':','')}_temp{probe_num}"
+        self._attr_unique_id = (
+            f"{DOMAIN}_{coordinator._address.replace(':', '')}_temp{probe_num}"
+        )
 
     @property
     def device_info(self):
@@ -432,7 +487,9 @@ class SalterBleTempSensor(SensorEntity):
     @property
     def available(self):
         """Return True if the sensor is available."""
-        return self._coordinator.is_connected and not self._coordinator._device_powered_off
+        return (
+            self._coordinator.is_connected and not self._coordinator._device_powered_off
+        )
 
     @property
     def native_value(self):
