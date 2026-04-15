@@ -96,40 +96,41 @@ class SalterBleCoordinator:
         """Set the temperature alarm setpoint for a specific probe.
         
         Protocol discovered from BLE log analysis:
-        - Command format: 09 XX YY (3 bytes)
-        - XX: 05 for sensor 1, 06 for sensor 2 (assumed)
-        - YY: temperature / 25 (e.g., 100°C = 4 because 4 * 25 = 100)
+        Command format: 09 XX YY (3 bytes)
+        
+        Known empirical mappings from captures:
+        - 09 05 04 = 100°C
+        - 09 07 03 = 63°C  
+        - 09 08 02 = 82°C (assumed)
+        
+        Encoding formula still being determined. Using direct approach for now.
         """
         if not self._client or not self._client.is_connected:
             _LOGGER.warning("Cannot set alarm: not connected to %s", self._address)
             return False
         
         try:
-            # Encode temperature: divide by 25 and round
-            # Valid range: 0-250°C maps to 0-10
-            temp_encoded = round(temperature / 25)
+            # EXPERIMENTAL: Based on limited data, trying formula
+            # temperature ≈ some function of (byte1, byte2)
+            # For now, sending temperature directly as 16-bit value / 10 in big-endian
             
-            # Clamp to valid range
-            temp_encoded = max(0, min(10, temp_encoded))
+            temp_value = temperature * 10  # e.g., 63°C -> 630
+            byte1 = (temp_value >> 8) & 0xFF
+            byte2 = temp_value & 0xFF
             
-            # Select subcommand based on probe number
-            # 0x05 for probe 1 (confirmed from log)
-            # 0x06 for probe 2 (assumed - needs verification)
-            subcommand = 0x05 if probe_num == 1 else 0x06
+            cmd = bytes([0x09, byte1, byte2])
             
-            # Build 3-byte command
-            cmd = bytes([0x09, subcommand, temp_encoded])
-            
-            _LOGGER.debug("Setting alarm for probe %d to %d°C (encoded: %d)", 
-                         probe_num, temperature, temp_encoded)
-            _LOGGER.debug("Sending SET ALARM command to %s: %s", self._address, cmd.hex())
+            _LOGGER.warning("EXPERIMENTAL: Probe %d to %d°C", probe_num, temperature)
+            _LOGGER.warning("  Temp*10=%d, Byte1=0x%02x (%d), Byte2=0x%02x (%d)", 
+                         temp_value, byte1, byte1, byte2, byte2)
+            _LOGGER.warning("  Command: %s", cmd.hex())
+            _LOGGER.warning("  Expected: 63°C->090703, 100°C->090504 from logs")
             
             await self._client.write_gatt_char(FFE1_UUID, cmd, response=False)
             
-            _LOGGER.info("Set alarm setpoint for %s Probe %d: %d°C", 
+            _LOGGER.info("Sent alarm command for %s Probe %d: %d°C", 
                         self._address, probe_num, temperature)
             
-            # Update local state
             if probe_num == 1:
                 self._alarm_setpoint1 = temperature
             else:
