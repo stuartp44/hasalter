@@ -92,6 +92,15 @@ class SalterBleCoordinator:
         if self._client and self._client.is_connected:
             await self._client.disconnect()
             _LOGGER.info("Disconnected from %s", self._address)
+        
+        # After 62 seconds (device powers off within ~1 minute), clear manual disconnect so we can reconnect when device is turned back on
+        async def clear_manual_disconnect():
+            await asyncio.sleep(62)
+            if self._manual_disconnect:
+                _LOGGER.info("Clearing manual disconnect for %s, will auto-reconnect when device returns", self._address)
+                self._manual_disconnect = False
+        
+        asyncio.create_task(clear_manual_disconnect())
 
     async def set_alarm_setpoint(self, probe_num: int, temperature: int):
         """Set the temperature alarm setpoint for a specific probe.
@@ -160,22 +169,10 @@ class SalterBleCoordinator:
 
     async def _maintain_connection(self):
         while self._should_connect:
-            # Don't reconnect if user manually disconnected, but check if device is still advertising
+            # Don't reconnect if user manually disconnected
             if self._manual_disconnect:
-                _LOGGER.debug("Manual disconnect active, checking if device has stopped advertising")
-                # Check if device has stopped advertising (gone to sleep)
-                ble_device = async_ble_device_from_address(
-                    self.hass, self._address, connectable=True
-                )
-                if not ble_device:
-                    # Device is no longer advertising, clear manual disconnect so we can reconnect when it comes back
-                    _LOGGER.info("Device %s stopped advertising, will auto-reconnect when it returns", self._address)
-                    self._manual_disconnect = False
-                else:
-                    # Device still advertising, stay disconnected
-                    _LOGGER.debug("Device %s still advertising, staying disconnected", self._address)
-                    await asyncio.sleep(5)
-                    continue
+                await asyncio.sleep(5)
+                continue
                 
             try:
                 await self._connect_and_listen()
