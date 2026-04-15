@@ -44,6 +44,36 @@ Successfully decoded the temperature alarm setting protocol through BLE log anal
   - 65°C → 650 → `0x028A`
   - 100°C → 1000 → `0x03E8`
 
+## Clear Alarm Protocol - CONFIRMED
+
+### Clear Commands (8 bytes)
+
+**Clear Probe 1 Alarm:**
+```
+09 08 02 00 00 00 00 00
+         ^^
+         Mode 00 = Clear Probe 1
+```
+
+**Clear Probe 2 Alarm:**
+```
+09 08 02 01 00 fa 00 00
+         ^^  ^^^^^ ^^^^^
+         01  250   0
+             (25°C) (0°C = cleared)
+```
+
+**Key insights:**
+- Mode byte (byte 3) differs from set mode (`03`)
+- Clear probe 1: Mode `00`, all temperature bytes set to zero
+- Clear probe 2: Mode `01`, probe 1 kept at 25.0°C (250 = 0x00fa), probe 2 set to zero
+- Setting temperature to 0x0000 (0°C, below valid range) effectively disables that probe's alarm
+
+### Mode Byte Summary
+- `00`: Clear probe 1 alarm
+- `01`: Clear probe 2 alarm  
+- `03`: Set both alarm temperatures
+
 ## BLE Characteristics
 
 **UUID: `0000ffe1-0000-1000-8000-00805f9b34fb`**

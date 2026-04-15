@@ -25,9 +25,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_e
 
 class SalterAlarmSetpoint(NumberEntity):
     _attr_native_unit_of_measurement = UnitOfTemperature.CELSIUS
-    _attr_native_min_value = 0
+    _attr_native_min_value = 1
     _attr_native_max_value = 250
-    _attr_native_step = 1  # Testing 1°C increments (user reports 22°C works)
+    _attr_native_step = 1
     _attr_mode = NumberMode.BOX
     _attr_icon = "mdi:thermometer-alert"
 
@@ -55,9 +55,12 @@ class SalterAlarmSetpoint(NumberEntity):
     @property
     def native_value(self):
         if self._probe_num == 1:
-            return self._coordinator._alarm_setpoint1
+            value = self._coordinator._alarm_setpoint1
         else:
-            return self._coordinator._alarm_setpoint2
+            value = self._coordinator._alarm_setpoint2
+        
+        # Return None if alarm is cleared (value = 0)
+        return value if value and value > 0 else None
 
     async def async_set_native_value(self, value: float):
         """Set the alarm temperature."""

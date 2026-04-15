@@ -106,15 +106,13 @@ class SalterBleCoordinator:
         """Set the temperature alarm setpoint for a specific probe.
         
         Protocol discovered from BLE log analysis:
-        Command format: 09 08 02 03 YY YY ZZ ZZ (8 bytes - sets BOTH probes)
         
-        Header: 09 08 02 03 (constant)
-        Bytes 4-5: Probe 1 temperature × 10 (16-bit big-endian)
-        Bytes 6-7: Probe 2 temperature × 10 (16-bit big-endian)
+        SET ALARM: 09 08 02 03 YY YY ZZ ZZ (8 bytes - sets BOTH probes)
+        - Mode byte: 03 (set mode)
+        - Bytes 4-5: Probe 1 temperature × 10 (16-bit big-endian)
+        - Bytes 6-7: Probe 2 temperature × 10 (16-bit big-endian)
         
-        Examples:
-        - Probe1=65°C, Probe2=100°C: 09 08 02 03 02 8a 03 e8
-        - Probe1=65°C, Probe2=60°C:  09 08 02 03 02 8a 02 58
+        Note: Use clear_alarm() method to clear alarms instead of setting to 0.
         """
         if not self._client or not self._client.is_connected:
             _LOGGER.warning("Cannot set alarm: not connected to %s", self._address)
@@ -133,23 +131,18 @@ class SalterBleCoordinator:
             temp1_value = int(temp1 * 10)
             temp2_value = int(temp2 * 10)
             
-            # Build 8-byte command
-            # Header: 09 08 02 03
-            # Probe 1: 16-bit big-endian
-            # Probe 2: 16-bit big-endian
+            # Build 8-byte command with mode 03 (set)
             cmd = bytes([
                 0x09, 0x08, 0x02, 0x03,
                 (temp1_value >> 8) & 0xFF, temp1_value & 0xFF,
                 (temp2_value >> 8) & 0xFF, temp2_value & 0xFF
             ])
             
-            _LOGGER.debug("Setting alarm setpoints: Probe 1=%d°C, Probe 2=%d°C", temp1, temp2)
+            _LOGGER.info("Setting alarm setpoints for %s: Probe 1=%d°C, Probe 2=%d°C", 
+                        self._address, temp1, temp2)
             _LOGGER.debug("Command: %s", cmd.hex())
             
             await self._client.write_gatt_char(FFE1_UUID, cmd, response=False)
-            
-            _LOGGER.info("Set alarm setpoints for %s: Probe 1=%d°C, Probe 2=%d°C", 
-                        self._address, temp1, temp2)
             
             # Update local state
             self._alarm_setpoint1 = temp1
@@ -160,6 +153,39 @@ class SalterBleCoordinator:
             return True
         except BleakError as e:
             _LOGGER.error("Failed to set alarm setpoint: %s", e)
+            return False
+
+    async def clear_alarm(self, probe_num: int):
+        """Clear the temperature alarm for a specific probe.
+        
+        Protocol:
+        - Probe 1: 09 08 02 00 00 00 00 00 (mode 00, all zeros)
+        - Probe 2: 09 08 02 01 00 fa 00 00 (mode 01, probe1=25°C, probe2=0)
+        """
+        if not self._client or not self._client.is_connected:
+            _LOGGER.warning("Cannot clear alarm: not connected to %s", self._address)
+            return False
+        
+        try:
+            if probe_num == 1:
+                # Clear probe 1: mode 00, all zeros
+                cmd = bytes([0x09, 0x08, 0x02, 0x00, 0x00, 0x00, 0x00, 0x00])
+                self._alarm_setpoint1 = 0
+                _LOGGER.info("Cleared alarm for probe 1 on %s", self._address)
+            else:
+                # Clear probe 2: mode 01, probe1=25°C, probe2=0
+                cmd = bytes([0x09, 0x08, 0x02, 0x01, 0x00, 0xfa, 0x00, 0x00])
+                self._alarm_setpoint2 = 0
+                _LOGGER.info("Cleared alarm for probe 2 on %s", self._address)
+            
+            _LOGGER.debug("Clear alarm command: %s", cmd.hex())
+            await self._client.write_gatt_char(FFE1_UUID, cmd, response=False)
+            
+            for callback in self._callbacks:
+                callback()
+            return True
+        except BleakError as e:
+            _LOGGER.error("Failed to clear alarm: %s", e)
             return False
 
     @property
