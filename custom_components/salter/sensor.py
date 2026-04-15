@@ -160,25 +160,23 @@ class SalterBleCoordinator:
 
     async def _maintain_connection(self):
         while self._should_connect:
-            if self._manual_disconnect:
-                _LOGGER.debug("Manual disconnect active, waiting for device to be turned back on")
-                await asyncio.sleep(5)
-                continue
-            
             try:
                 await self._connect_and_listen()
             except Exception as e:
                 if self._should_connect:
-                    _LOGGER.debug("Connection to %s lost: %s, will retry in 10s", self._address, e)
-                    await asyncio.sleep(10)
+                    sleep_time = 10 if not self._manual_disconnect else 5
+                    _LOGGER.debug("Connection to %s lost: %s, will retry in %ds", self._address, e, sleep_time)
+                    await asyncio.sleep(sleep_time)
 
     async def _connect_and_listen(self):
         self._ble_device = async_ble_device_from_address(
             self.hass, self._address, connectable=True
         )
         if not self._ble_device:
+            # If device was manually powered off, check more frequently
+            sleep_time = 5 if self._manual_disconnect else 30
             _LOGGER.debug("Device %s not found (may be sleeping or off)", self._address)
-            await asyncio.sleep(30)
+            await asyncio.sleep(sleep_time)
             return
 
         if self._manual_disconnect:
