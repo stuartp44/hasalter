@@ -160,10 +160,20 @@ class SalterBleCoordinator:
 
     async def _maintain_connection(self):
         while self._should_connect:
-            # Don't reconnect if user manually disconnected
+            # Don't reconnect if user manually disconnected, but check if device is still advertising
             if self._manual_disconnect:
-                await asyncio.sleep(5)
-                continue
+                # Check if device has stopped advertising (gone to sleep)
+                ble_device = async_ble_device_from_address(
+                    self.hass, self._address, connectable=True
+                )
+                if not ble_device:
+                    # Device is no longer advertising, clear manual disconnect so we can reconnect when it comes back
+                    _LOGGER.info("Device %s stopped advertising, will auto-reconnect when it returns", self._address)
+                    self._manual_disconnect = False
+                else:
+                    # Device still advertising, stay disconnected
+                    await asyncio.sleep(5)
+                    continue
                 
             try:
                 await self._connect_and_listen()
