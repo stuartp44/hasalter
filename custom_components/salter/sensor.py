@@ -96,45 +96,54 @@ class SalterBleCoordinator:
         """Set the temperature alarm setpoint for a specific probe.
         
         Protocol discovered from BLE log analysis:
-        Command format: 09 XX YY (3 bytes)
+        Command format: 09 08 02 03 YY YY ZZ ZZ (8 bytes - sets BOTH probes)
         
-        Known empirical mappings from captures:
-        - 09 05 04 = 100°C
-        - 09 07 03 = 63°C  
-        - 09 08 02 = 82°C (assumed)
+        Header: 09 08 02 03 (constant)
+        Bytes 4-5: Probe 1 temperature × 10 (16-bit big-endian)
+        Bytes 6-7: Probe 2 temperature × 10 (16-bit big-endian)
         
-        Encoding formula still being determined. Using direct approach for now.
+        Examples:
+        - Probe1=65°C, Probe2=100°C: 09 08 02 03 02 8a 03 e8
+        - Probe1=65°C, Probe2=60°C:  09 08 02 03 02 8a 02 58
         """
         if not self._client or not self._client.is_connected:
             _LOGGER.warning("Cannot set alarm: not connected to %s", self._address)
             return False
         
         try:
-            # EXPERIMENTAL: Based on limited data, trying formula
-            # temperature ≈ some function of (byte1, byte2)
-            # For now, sending temperature directly as 16-bit value / 10 in big-endian
+            # Update the requested probe's setpoint
+            if probe_num == 1:
+                temp1 = temperature
+                temp2 = self._alarm_setpoint2 if self._alarm_setpoint2 else 100
+            else:
+                temp1 = self._alarm_setpoint1 if self._alarm_setpoint1 else 100
+                temp2 = temperature
             
-            temp_value = temperature * 10  # e.g., 63°C -> 630
-            byte1 = (temp_value >> 8) & 0xFF
-            byte2 = temp_value & 0xFF
+            # Encode both temperatures as 16-bit values (temp × 10)
+            temp1_value = int(temp1 * 10)
+            temp2_value = int(temp2 * 10)
             
-            cmd = bytes([0x09, byte1, byte2])
+            # Build 8-byte command
+            # Header: 09 08 02 03
+            # Probe 1: 16-bit big-endian
+            # Probe 2: 16-bit big-endian
+            cmd = bytes([
+                0x09, 0x08, 0x02, 0x03,
+                (temp1_value >> 8) & 0xFF, temp1_value & 0xFF,
+                (temp2_value >> 8) & 0xFF, temp2_value & 0xFF
+            ])
             
-            _LOGGER.warning("EXPERIMENTAL: Probe %d to %d°C", probe_num, temperature)
-            _LOGGER.warning("  Temp*10=%d, Byte1=0x%02x (%d), Byte2=0x%02x (%d)", 
-                         temp_value, byte1, byte1, byte2, byte2)
-            _LOGGER.warning("  Command: %s", cmd.hex())
-            _LOGGER.warning("  Expected: 63°C->090703, 100°C->090504 from logs")
+            _LOGGER.debug("Setting alarm setpoints: Probe 1=%d°C, Probe 2=%d°C", temp1, temp2)
+            _LOGGER.debug("Command: %s", cmd.hex())
             
             await self._client.write_gatt_char(FFE1_UUID, cmd, response=False)
             
-            _LOGGER.info("Sent alarm command for %s Probe %d: %d°C", 
-                        self._address, probe_num, temperature)
+            _LOGGER.info("Set alarm setpoints for %s: Probe 1=%d°C, Probe 2=%d°C", 
+                        self._address, temp1, temp2)
             
-            if probe_num == 1:
-                self._alarm_setpoint1 = temperature
-            else:
-                self._alarm_setpoint2 = temperature
+            # Update local state
+            self._alarm_setpoint1 = temp1
+            self._alarm_setpoint2 = temp2
             
             for callback in self._callbacks:
                 callback()
