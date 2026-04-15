@@ -62,7 +62,7 @@ class SalterBleCoordinator:
         self._callbacks = []
         self._should_connect = True
         self._manual_disconnect = False
-        self._powering_off = False
+        self._device_powered_off = False
 
     def register_callback(self, callback):
         self._callbacks.append(callback)
@@ -160,11 +160,16 @@ class SalterBleCoordinator:
 
     async def _maintain_connection(self):
         while self._should_connect:
+            # Don't reconnect if user manually disconnected
+            if self._manual_disconnect:
+                await asyncio.sleep(5)
+                continue
+                
             try:
                 await self._connect_and_listen()
             except Exception as e:
                 if self._should_connect:
-                    sleep_time = 10 if not self._manual_disconnect else 5
+                    sleep_time = 5 if self._device_powered_off else 10
                     _LOGGER.debug("Connection to %s lost: %s, will retry in %ds", self._address, e, sleep_time)
                     await asyncio.sleep(sleep_time)
 
@@ -173,16 +178,15 @@ class SalterBleCoordinator:
             self.hass, self._address, connectable=True
         )
         if not self._ble_device:
-            # If device was manually powered off, check more frequently
-            sleep_time = 5 if self._manual_disconnect else 30
+            # If device was powered off, check more frequently
+            sleep_time = 5 if self._device_powered_off else 30
             _LOGGER.debug("Device %s not found (may be sleeping or off)", self._address)
             await asyncio.sleep(sleep_time)
             return
 
-        if self._manual_disconnect:
-            _LOGGER.info("Device %s detected, clearing manual disconnect", self._address)
-            self._manual_disconnect = False
-            self._powering_off = False
+        if self._device_powered_off:
+            _LOGGER.info("Device %s detected, clearing power-off state", self._address)
+            self._device_powered_off = False
 
         _LOGGER.info("Connecting to %s", self._address)
         
@@ -278,7 +282,7 @@ class SalterBleCoordinator:
     
     async def _send_poll(self, _):
         # Don't poll if device is powering off
-        if self._powering_off:
+        if self._device_powered_off:
             return
             
         if self._client and self._client.is_connected:
@@ -323,10 +327,9 @@ class SalterBleCoordinator:
         
         # Power off notification (0xaf) - device is shutting down
         if data[2] == 0xaf:
-            if not self._powering_off:  # Only process first power-off notification
+            if not self._device_powered_off:  # Only process first power-off notification
                 _LOGGER.info("Device %s is powering off (received shutdown notification)", self._address)
-                self._powering_off = True
-                self._manual_disconnect = True
+                self._device_powered_off = True
                 
                 # Stop polling immediately
                 if self._cancel_poll:
