@@ -7,7 +7,6 @@ from datetime import timedelta
 from bleak import BleakClient, BleakError
 from bleak_retry_connector import establish_connection
 
-from homeassistant.components import bluetooth
 from homeassistant.components.bluetooth import async_ble_device_from_address
 from homeassistant.components.sensor import SensorEntity
 from homeassistant.config_entries import ConfigEntry
@@ -94,30 +93,43 @@ class SalterBleCoordinator:
             _LOGGER.info("Disconnected from %s", self._address)
 
     async def set_alarm_setpoint(self, probe_num: int, temperature: int):
-        """Set the temperature alarm setpoint for a specific probe."""
+        """Set the temperature alarm setpoint for a specific probe.
+        
+        Protocol discovered from BLE log analysis:
+        - Command format: 09 XX YY (3 bytes)
+        - XX: 05 for sensor 1, 06 for sensor 2 (assumed)
+        - YY: temperature / 25 (e.g., 100°C = 4 because 4 * 25 = 100)
+        """
         if not self._client or not self._client.is_connected:
             _LOGGER.warning("Cannot set alarm: not connected to %s", self._address)
             return False
         
         try:
-            # Try different command formats to find what works
-            # Temperature is sent as 16-bit big-endian value (multiplied by 10)
-            if probe_num == 1:
-                temp1_value = temperature * 10
-                temp2_value = (self._alarm_setpoint2 or 100) * 10
-            else:
-                temp1_value = (self._alarm_setpoint1 or 100) * 10
-                temp2_value = temperature * 10
+            # Encode temperature: divide by 25 and round
+            # Valid range: 0-250°C maps to 0-10
+            temp_encoded = round(temperature / 25)
             
-            # Format 1: Try command 0x03 instead of 0x0A
-            cmd = bytes([0x09, 0x03, 0x03, 
-                        (temp1_value >> 8) & 0xFF, temp1_value & 0xFF,
-                        (temp2_value >> 8) & 0xFF, temp2_value & 0xFF])
-            _LOGGER.debug("Sending SET ALARM command (format 1: cmd=0x03) to %s: %s", self._address, cmd.hex())
+            # Clamp to valid range
+            temp_encoded = max(0, min(10, temp_encoded))
+            
+            # Select subcommand based on probe number
+            # 0x05 for probe 1 (confirmed from log)
+            # 0x06 for probe 2 (assumed - needs verification)
+            subcommand = 0x05 if probe_num == 1 else 0x06
+            
+            # Build 3-byte command
+            cmd = bytes([0x09, subcommand, temp_encoded])
+            
+            _LOGGER.debug("Setting alarm for probe %d to %d°C (encoded: %d)", 
+                         probe_num, temperature, temp_encoded)
+            _LOGGER.debug("Sending SET ALARM command to %s: %s", self._address, cmd.hex())
+            
             await self._client.write_gatt_char(FFE1_UUID, cmd, response=False)
-            _LOGGER.info("Set alarm setpoints for %s: Probe 1=%d°C, Probe 2=%d°C", 
-                        self._address, temp1_value // 10, temp2_value // 10)
             
+            _LOGGER.info("Set alarm setpoint for %s Probe %d: %d°C", 
+                        self._address, probe_num, temperature)
+            
+            # Update local state
             if probe_num == 1:
                 self._alarm_setpoint1 = temperature
             else:
