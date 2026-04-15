@@ -324,7 +324,7 @@ class SalterBleCoordinator:
             return
         
         # Power off notification (0xaf) - device is shutting down
-        if dif not self._powering_off:  # Only process first power-off notification
+        if not self._powering_off:  # Only process first power-off notification
                 _LOGGER.info("Device %s is powering off (received shutdown notification)", self._address)
                 self._powering_off = True
                 self._manual_disconnect = True
