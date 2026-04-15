@@ -317,6 +317,13 @@ class SalterBleCoordinator:
                 _LOGGER.debug("INIT response too short")
             return
         
+        # Power off notification (0xaf) - device is shutting down
+        if data[2] == 0xaf:
+            _LOGGER.info("Device %s is powering off (received shutdown notification)", self._address)
+            self._manual_disconnect = True
+            # The disconnect callback will handle cleanup
+            return
+        
         # Temperature data (0x06)
         if data[2] != 0x06:
             _LOGGER.debug("Unexpected message type: 0x%02x", data[2])
