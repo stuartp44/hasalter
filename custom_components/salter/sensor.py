@@ -347,6 +347,10 @@ class SalterBleCoordinator:
                     self._cancel_poll()
                     self._cancel_poll = None
                     _LOGGER.debug("Stopped keep-alive polling due to power off")
+                
+                # Notify sensors to update their state
+                for callback in self._callbacks:
+                    callback()
             # Disconnect will happen naturally when device shuts down
             return
         
@@ -399,6 +403,11 @@ class SalterBleTempSensor(SensorEntity):
             "serial_number": self._coordinator._serial_number,
             "connections": {(dr.CONNECTION_BLUETOOTH, self._coordinator._address)},
         }
+
+    @property
+    def available(self):
+        """Return True if the sensor is available."""
+        return self._coordinator.is_connected and not self._coordinator._device_powered_off
 
     @property
     def native_value(self):
