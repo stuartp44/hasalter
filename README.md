@@ -1,6 +1,6 @@
 # Salter Cook Bluetooth Thermometer Integration
 
-Home Assistant custom integration for Salter Cook Bluetooth dual-probe kitchen thermometer. Connect, monitor temperatures, and set temperature alarms directly from Home Assistant.
+Home Assistant custom integration for Salter Cook Bluetooth dual-probe kitchen thermometer. Connect, monitor temperatures, and set temperature alarms directly from Home Assistant. Though this only focuses on the Thermometer, there could be scope in the future to support other items in the range.
 
 ## Features
 
