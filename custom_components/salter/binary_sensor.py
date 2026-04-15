@@ -10,7 +10,7 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import device_registry as dr
 
-from .const import DOMAIN, CONF_NAME, DEFAULT_NAME
+from .const import CONF_NAME, DEFAULT_NAME, DOMAIN
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -18,7 +18,7 @@ _LOGGER = logging.getLogger(__name__)
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_entities):
     coordinator = hass.data[DOMAIN][entry.entry_id]
     name = entry.data.get(CONF_NAME, DEFAULT_NAME)
-    
+
     async_add_entities([
         SalterConnectionSensor(coordinator, name),
         SalterAlarmSensor(coordinator, name, 1),
@@ -34,7 +34,7 @@ class SalterConnectionSensor(BinarySensorEntity):
         self._name = name
         self._attr_name = f"{name} Connection"
         self._attr_unique_id = f"{DOMAIN}_{coordinator._address.replace(':','')}_connection"
-    
+
     @property
     def device_info(self):
         return {
@@ -69,7 +69,7 @@ class SalterAlarmSensor(BinarySensorEntity):
         probe_name = "Left Probe" if probe_num == 1 else "Right Probe"
         self._attr_name = f"{name} {probe_name} Alarm Active"
         self._attr_unique_id = f"{DOMAIN}_{coordinator._address.replace(':','')}_alarm_active_{probe_num}"
-    
+
     @property
     def device_info(self):
         return {
@@ -92,12 +92,12 @@ class SalterAlarmSensor(BinarySensorEntity):
         else:
             temp = self._coordinator._temp2
             alarm = self._coordinator._alarm_setpoint2
-        
+
         # Alarm is active if setpoint > 0 and temperature >= setpoint
         if alarm and alarm > 0 and temp is not None:
             return temp >= alarm
         return False
-    
+
     @property
     def available(self) -> bool:
         """Entity is always available, shows off when alarm not set."""

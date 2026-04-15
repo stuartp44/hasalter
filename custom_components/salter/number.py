@@ -8,7 +8,7 @@ from homeassistant.const import UnitOfTemperature
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import device_registry as dr
 
-from .const import DOMAIN, CONF_NAME, DEFAULT_NAME
+from .const import CONF_NAME, DEFAULT_NAME, DOMAIN
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -16,7 +16,7 @@ _LOGGER = logging.getLogger(__name__)
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_entities):
     coordinator = hass.data[DOMAIN][entry.entry_id]
     name = entry.data.get(CONF_NAME, DEFAULT_NAME)
-    
+
     async_add_entities([
         SalterAlarmSetpoint(coordinator, name, 1),
         SalterAlarmSetpoint(coordinator, name, 2),
@@ -38,7 +38,7 @@ class SalterAlarmSetpoint(NumberEntity):
         probe_name = "Left Probe" if probe_num == 1 else "Right Probe"
         self._attr_name = f"{name} {probe_name} Alarm"
         self._attr_unique_id = f"{DOMAIN}_{coordinator._address.replace(':','')}_alarm_{probe_num}"
-    
+
     @property
     def device_info(self):
         return {
@@ -58,7 +58,7 @@ class SalterAlarmSetpoint(NumberEntity):
             value = self._coordinator._alarm_setpoint1
         else:
             value = self._coordinator._alarm_setpoint2
-        
+
         # Return None if alarm is cleared (value = 0)
         return value if value and value > 0 else None
 

@@ -6,7 +6,6 @@ from datetime import timedelta
 
 from bleak import BleakClient, BleakError
 from bleak_retry_connector import establish_connection
-
 from homeassistant.components.bluetooth import async_ble_device_from_address
 from homeassistant.components.sensor import SensorEntity
 from homeassistant.config_entries import ConfigEntry
@@ -15,7 +14,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers.event import async_track_time_interval
 
-from .const import DOMAIN, CONF_ADDRESS, CONF_NAME, DEFAULT_NAME
+from .const import CONF_ADDRESS, CONF_NAME, DEFAULT_NAME, DOMAIN
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -28,18 +27,18 @@ POLL_INTERVAL = timedelta(seconds=1)
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_entities):
     address = entry.data[CONF_ADDRESS].upper()
     name = entry.data.get(CONF_NAME, DEFAULT_NAME)
-    
+
     coordinator = SalterBleCoordinator(hass, address, entry.entry_id)
-    
+
     if DOMAIN not in hass.data:
         hass.data[DOMAIN] = {}
     hass.data[DOMAIN][entry.entry_id] = coordinator
-    
+
     async_add_entities([
         SalterBleTempSensor(coordinator, name, 1),
         SalterBleTempSensor(coordinator, name, 2),
     ], update_before_add=False)
-    
+
     await coordinator.start()
 
 
@@ -83,23 +82,23 @@ class SalterBleCoordinator:
     async def disconnect(self):
         """Stop keep-alive polling and disconnect gracefully."""
         self._manual_disconnect = True
-        
+
         if self._cancel_poll:
             self._cancel_poll()
             self._cancel_poll = None
             _LOGGER.info("Stopped keep-alive polling, device will sleep")
-        
+
         if self._client and self._client.is_connected:
             await self._client.disconnect()
             _LOGGER.info("Disconnected from %s", self._address)
-        
+
         # After 62 seconds (device powers off within ~1 minute), clear manual disconnect so we can reconnect when device is turned back on
         async def clear_manual_disconnect():
             await asyncio.sleep(62)
             if self._manual_disconnect:
                 _LOGGER.info("Clearing manual disconnect for %s, will auto-reconnect when device returns", self._address)
                 self._manual_disconnect = False
-        
+
         asyncio.create_task(clear_manual_disconnect())
 
     async def set_alarm_setpoint(self, probe_num: int, temperature: int):
@@ -117,7 +116,7 @@ class SalterBleCoordinator:
         if not self._client or not self._client.is_connected:
             _LOGGER.warning("Cannot set alarm: not connected to %s", self._address)
             return False
-        
+
         try:
             # Update the requested probe's setpoint
             if probe_num == 1:
@@ -126,28 +125,28 @@ class SalterBleCoordinator:
             else:
                 temp1 = self._alarm_setpoint1 if self._alarm_setpoint1 else 100
                 temp2 = temperature
-            
+
             # Encode both temperatures as 16-bit values (temp × 10)
             temp1_value = int(temp1 * 10)
             temp2_value = int(temp2 * 10)
-            
+
             # Build 8-byte command with mode 03 (set)
             cmd = bytes([
                 0x09, 0x08, 0x02, 0x03,
                 (temp1_value >> 8) & 0xFF, temp1_value & 0xFF,
                 (temp2_value >> 8) & 0xFF, temp2_value & 0xFF
             ])
-            
-            _LOGGER.info("Setting alarm setpoints for %s: Probe 1=%d°C, Probe 2=%d°C", 
+
+            _LOGGER.info("Setting alarm setpoints for %s: Probe 1=%d°C, Probe 2=%d°C",
                         self._address, temp1, temp2)
             _LOGGER.debug("Command: %s", cmd.hex())
-            
+
             await self._client.write_gatt_char(FFE1_UUID, cmd, response=False)
-            
+
             # Update local state
             self._alarm_setpoint1 = temp1
             self._alarm_setpoint2 = temp2
-            
+
             for callback in self._callbacks:
                 callback()
             return True
@@ -165,7 +164,7 @@ class SalterBleCoordinator:
         if not self._client or not self._client.is_connected:
             _LOGGER.warning("Cannot clear alarm: not connected to %s", self._address)
             return False
-        
+
         try:
             if probe_num == 1:
                 # Clear probe 1: mode 00, all zeros
@@ -177,10 +176,10 @@ class SalterBleCoordinator:
                 cmd = bytes([0x09, 0x08, 0x02, 0x01, 0x00, 0xfa, 0x00, 0x00])
                 self._alarm_setpoint2 = 0
                 _LOGGER.info("Cleared alarm for probe 2 on %s", self._address)
-            
+
             _LOGGER.debug("Clear alarm command: %s", cmd.hex())
             await self._client.write_gatt_char(FFE1_UUID, cmd, response=False)
-            
+
             for callback in self._callbacks:
                 callback()
             return True
@@ -199,7 +198,7 @@ class SalterBleCoordinator:
             if self._manual_disconnect:
                 await asyncio.sleep(5)
                 continue
-                
+
             try:
                 await self._connect_and_listen()
             except Exception as e:
@@ -224,16 +223,16 @@ class SalterBleCoordinator:
             self._device_powered_off = False
 
         _LOGGER.info("Connecting to %s", self._address)
-        
+
         self._client = await establish_connection(
             client_class=BleakClient,
             device=self._ble_device,
             name=self._address,
             disconnected_callback=self._on_disconnect,
         )
-        
+
         _LOGGER.info("Connected to %s", self._address)
-        
+
         # Read firmware version from Device Information Service (0x2A26)
         try:
             fw_bytes = await self._client.read_gatt_char("00002a26-0000-1000-8000-00805f9b34fb")
@@ -242,7 +241,7 @@ class SalterBleCoordinator:
         except Exception as e:
             _LOGGER.debug("Could not read firmware version: %s", e)
             self._firmware_version = None
-        
+
         # Read serial number from Device Information Service (0x2A25)
         try:
             sn_bytes = await self._client.read_gatt_char("00002a25-0000-1000-8000-00805f9b34fb")
@@ -256,7 +255,7 @@ class SalterBleCoordinator:
         except Exception as e:
             _LOGGER.debug("Could not read serial number: %s", e)
             self._serial_number = None
-        
+
         # Read hardware revision from Device Information Service (0x2A27)
         try:
             hw_bytes = await self._client.read_gatt_char("00002a27-0000-1000-8000-00805f9b34fb")
@@ -265,7 +264,7 @@ class SalterBleCoordinator:
         except Exception as e:
             _LOGGER.debug("Could not read hardware version: %s", e)
             self._hardware_version = None
-        
+
         # Update device registry with the read information
         if self._firmware_version or self._serial_number or self._hardware_version:
             device_registry = dr.async_get(self.hass)
@@ -279,7 +278,7 @@ class SalterBleCoordinator:
                 serial_number=self._serial_number,
                 connections={(dr.CONNECTION_BLUETOOTH, self._address)},
             )
-        
+
         for callback in self._callbacks:
             callback()
 
@@ -297,7 +296,7 @@ class SalterBleCoordinator:
 
         while self._client and self._client.is_connected:
             await asyncio.sleep(1)
-        
+
         _LOGGER.debug("Exited connection loop for %s", self._address)
 
     def _on_disconnect(self, client):
@@ -305,7 +304,7 @@ class SalterBleCoordinator:
         if self._cancel_poll:
             self._cancel_poll()
             self._cancel_poll = None
-        
+
         for callback in self._callbacks:
             callback()
 
@@ -313,15 +312,15 @@ class SalterBleCoordinator:
         if self._client and self._client.is_connected:
             await self._client.disconnect()
         self._client = None
-        
+
         for callback in self._callbacks:
             callback()
-    
+
     async def _send_poll(self, _):
         # Don't poll if device is powering off
         if self._device_powered_off:
             return
-            
+
         if self._client and self._client.is_connected:
             try:
                 await self._client.write_gatt_char(FFE1_UUID, POLL_CMD, response=False)
@@ -337,15 +336,15 @@ class SalterBleCoordinator:
             data.hex(),
             list(data)
         )
-        
+
         if len(data) < 7:
             _LOGGER.debug("Data too short (length %d)", len(data))
             return
-        
+
         if data[0] != 0x08:
             _LOGGER.debug("Unexpected message header: 0x%02x", data[0])
             return
-        
+
         # INIT response (0x09) - contains configuration data (alarm setpoint, etc)
         if data[2] == 0x09:
             if len(data) >= 8:
@@ -354,32 +353,32 @@ class SalterBleCoordinator:
                 raw_alarm2 = (data[6] << 8) | data[7]
                 self._alarm_setpoint1 = raw_alarm1 // 10
                 self._alarm_setpoint2 = raw_alarm2 // 10
-                _LOGGER.debug("Parsed alarm setpoints from %s: Probe 1=%d°C (raw=%d), Probe 2=%d°C (raw=%d)", 
+                _LOGGER.debug("Parsed alarm setpoints from %s: Probe 1=%d°C (raw=%d), Probe 2=%d°C (raw=%d)",
                              self._address, self._alarm_setpoint1, raw_alarm1, self._alarm_setpoint2, raw_alarm2)
                 for callback in self._callbacks:
                     callback()
             else:
                 _LOGGER.debug("INIT response too short")
             return
-        
+
         # Power off notification (0xaf) - device is shutting down
         if data[2] == 0xaf:
             if not self._device_powered_off:  # Only process first power-off notification
                 _LOGGER.info("Device %s is powering off (received shutdown notification)", self._address)
                 self._device_powered_off = True
-                
+
                 # Stop polling immediately
                 if self._cancel_poll:
                     self._cancel_poll()
                     self._cancel_poll = None
                     _LOGGER.debug("Stopped keep-alive polling due to power off")
-                
+
                 # Notify sensors to update their state
                 for callback in self._callbacks:
                     callback()
             # Disconnect will happen naturally when device shuts down
             return
-        
+
         # Temperature data (0x06)
         if data[2] != 0x06:
             _LOGGER.debug("Unexpected message type: 0x%02x", data[2])
@@ -416,7 +415,7 @@ class SalterBleTempSensor(SensorEntity):
         probe_name = "Left Probe" if probe_num == 1 else "Right Probe"
         self._attr_name = f"{name} {probe_name}"
         self._attr_unique_id = f"{DOMAIN}_{coordinator._address.replace(':','')}_temp{probe_num}"
-    
+
     @property
     def device_info(self):
         return {
@@ -441,7 +440,7 @@ class SalterBleTempSensor(SensorEntity):
             temp = self._coordinator._temp1
         else:
             temp = self._coordinator._temp2
-        
+
         if temp is not None and -20 <= temp <= 250:
             return round(temp, 1)
         return None

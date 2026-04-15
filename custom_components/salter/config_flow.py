@@ -2,15 +2,15 @@ from __future__ import annotations
 
 import logging
 
+import voluptuous as vol
 from homeassistant import config_entries
 from homeassistant.components.bluetooth import (
     BluetoothServiceInfoBleak,
     async_discovered_service_info,
 )
 from homeassistant.data_entry_flow import FlowResult
-import voluptuous as vol
 
-from .const import DOMAIN, CONF_ADDRESS, CONF_NAME, DEFAULT_NAME
+from .const import CONF_ADDRESS, CONF_NAME, DEFAULT_NAME, DOMAIN
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -29,14 +29,14 @@ class SalterBleConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         self._abort_if_unique_id_configured()
 
         self._discovery_info = discovery_info
-        
+
         # Log advertisement data to find firmware version
         _LOGGER.debug("Discovery info for %s: name=%s, local_name=%s, manufacturer_data=%s, service_data=%s",
-                     discovery_info.address, discovery_info.name, 
+                     discovery_info.address, discovery_info.name,
                      getattr(discovery_info, 'local_name', None),
                      discovery_info.manufacturer_data,
                      getattr(discovery_info, 'service_data', {}))
-        
+
         return await self.async_step_bluetooth_confirm()
 
     async def async_step_bluetooth_confirm(
@@ -61,7 +61,7 @@ class SalterBleConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             "address": discovery_info.address,
         }
         self.context["title_placeholders"] = placeholders
-        
+
         return self.async_show_form(
             step_id="bluetooth_confirm",
             description_placeholders=placeholders,
@@ -75,7 +75,7 @@ class SalterBleConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             address = user_input[CONF_ADDRESS].upper()
             await self.async_set_unique_id(address)
             self._abort_if_unique_id_configured()
-            
+
             return self.async_create_entry(
                 title=user_input.get(CONF_NAME, DEFAULT_NAME),
                 data={
@@ -95,7 +95,7 @@ class SalterBleConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             schema = vol.Schema(
                 {
                     vol.Required(CONF_ADDRESS): vol.In(
-                        {info.address: f"{info.name} ({info.address})" 
+                        {info.address: f"{info.name} ({info.address})"
                          for info in salter_devices}
                     ),
                     vol.Optional(CONF_NAME, default=DEFAULT_NAME): str,
