@@ -1,0 +1,181 @@
+name: Preview Release
+
+on:
+  pull_request:
+    types: [labeled, synchronize, reopened]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    name: Linting
+    if: >-
+      contains(github.event.pull_request.labels.*.name, 'preview') &&
+      github.event.pull_request.head.repo.full_name == github.repository
+    steps:
+      - name: Check out code from GitHub
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.ref }}
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install ruff
+
+      - name: Ruff (linter)
+        run: ruff check .
+
+      - name: Ruff (formatter)
+        run: ruff format --check .
+
+  hassfest:
+    runs-on: ubuntu-latest
+    name: Hassfest Validation
+    if: >-
+      contains(github.event.pull_request.labels.*.name, 'preview') &&
+      github.event.pull_request.head.repo.full_name == github.repository
+    steps:
+      - name: Check out code from GitHub
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.pull_request.head.ref }}
+
+      - name: Hassfest
+        uses: home-assistant/actions/hassfest@master
+
+  hacs:
+    runs-on: ubuntu-latest
+    name: HACS Validation
+    if: >-
+      contains(github.event.pull_request.labels.*.name, 'preview') &&
+      github.event.pull_request.head.repo.full_name == github.repository
+    steps:
+      - name: Check out code from GitHub
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.pull_request.head.ref }}
+
+      - name: HACS Action
+        uses: hacs/action@main
+        with:
+          category: integration
+
+  preview_release:
+    needs: [lint, hassfest, hacs]
+    runs-on: ubuntu-latest
+    name: Preview Release
+    if: >-
+      contains(github.event.pull_request.labels.*.name, 'preview') &&
+      github.event.pull_request.head.repo.full_name == github.repository
+    steps:
+      - name: Check out code from GitHub
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.ref }}
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install semantic-release
+        run: |
+          npm install -g \
+            semantic-release@23 \
+            @semantic-release/changelog@6 \
+            @semantic-release/git@10 \
+            @semantic-release/github@10 \
+            @semantic-release/exec@6 \
+            conventional-changelog-conventionalcommits@7
+
+      - name: Create preview branch
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          PREVIEW_BRANCH="preview/pr-${{ github.event.pull_request.number }}"
+          git checkout -B "$PREVIEW_BRANCH"
+          git push -f origin "$PREVIEW_BRANCH"
+
+      - name: Run semantic-release
+        id: preview_release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          npx semantic-release -e ./.releaserc.preview.json
+
+      - name: Get preview release details
+        id: get_release
+        uses: actions/github-script@v9
+        with:
+          result-encoding: string
+          script: |
+            const { data: releases } = await github.rest.repos.listReleases({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              per_page: 10,
+            });
+            
+            let previewRelease = releases.find(r => 
+              r.tag_name.includes('preview') && 
+              r.body && r.body.includes(`#${context.payload.pull_request.number}`)
+            );
+            
+            if (!previewRelease) {
+              previewRelease = releases.find(r => r.tag_name.includes('preview'));
+            }
+            
+            if (!previewRelease) {
+              const version = require('./custom_components/salter/manifest.json').version;
+              previewRelease = await github.rest.repos.createRelease({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                tag_name: `v${version}`,
+                name: `Preview Release v${version}`,
+                body: `Preview release for PR #${context.payload.pull_request.number}.`,
+                prerelease: true,
+              });
+              previewRelease = previewRelease.data;
+            }
+            
+            return JSON.stringify({
+              url: previewRelease.html_url,
+              tag: previewRelease.tag_name,
+            });
+
+      - name: Comment on PR and add label
+        uses: actions/github-script@v9
+        with:
+          script: |
+            const payload = JSON.parse(`${{ steps.get_release.outputs.result }}`);
+            const issue_number = context.payload.pull_request.number;
+            
+            await github.rest.issues.addLabels({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number,
+              labels: ['previewed'],
+            });
+            
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number,
+              body: `Preview release **${payload.tag}** created: ${payload.url}`,
+            });

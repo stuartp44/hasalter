@@ -1,0 +1,164 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: write
+  issues: write
+  pull-requests: write
+  security-events: write
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    name: Linting
+    if: "!contains(github.event.head_commit.message, 'skip ci')"
+    steps:
+      - name: Check out code from GitHub
+        uses: actions/checkout@v6
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install ruff
+
+      - name: Ruff (linter)
+        run: ruff check .
+
+      - name: Ruff (formatter)
+        run: ruff format --check .
+
+  hassfest:
+    runs-on: ubuntu-latest
+    name: Hassfest Validation
+    if: "!contains(github.event.head_commit.message, 'skip ci')"
+    steps:
+      - name: Check out code from GitHub
+        uses: actions/checkout@v6
+
+      - name: Hassfest
+        uses: home-assistant/actions/hassfest@master
+
+  hacs:
+    runs-on: ubuntu-latest
+    name: HACS Validation
+    if: "!contains(github.event.head_commit.message, 'skip ci')"
+    steps:
+      - name: Check out code from GitHub
+        uses: actions/checkout@v6
+
+      - name: HACS Action
+        uses: hacs/action@main
+        with:
+          category: integration
+
+  release:
+    needs: [lint, hassfest, hacs]
+    runs-on: ubuntu-latest
+    name: Release
+    if: "!contains(github.event.head_commit.message, 'skip ci')"
+    steps:
+      - name: Check out code from GitHub
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install semantic-release
+        run: |
+          npm install -g \
+            semantic-release@23 \
+            @semantic-release/changelog@6 \
+            @semantic-release/git@10 \
+            @semantic-release/github@10 \
+            @semantic-release/exec@6 \
+            conventional-changelog-conventionalcommits@7
+
+      - name: Run semantic-release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: npx semantic-release
+
+      - name: Update Contributors
+        if: success()
+        uses: actions/github-script@v9
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const { data: contributors } = await github.rest.repos.listContributors({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              per_page: 100
+            });
+
+            let contributorsMarkdown = '# Contributors\n\n';
+            contributorsMarkdown += 'Thank you to all our amazing contributors!\n\n';
+            contributorsMarkdown += '<table>\n<tr>\n';
+
+            contributors.forEach((contributor, index) => {
+              if (index > 0 && index % 5 === 0) {
+                contributorsMarkdown += '</tr>\n<tr>\n';
+              }
+              contributorsMarkdown += `  <td align="center">
+                <a href="${contributor.html_url}">
+                  <img src="${contributor.avatar_url}" width="100px;" alt="${contributor.login}"/>
+                  <br />
+                  <sub><b>${contributor.login}</b></sub>
+                </a>
+                <br />
+                <sub>${contributor.contributions} commits</sub>
+              </td>\n`;
+            });
+
+            contributorsMarkdown += '</tr>\n</table>\n';
+
+            const fs = require('fs');
+            fs.writeFileSync('CONTRIBUTORS.md', contributorsMarkdown);
+
+            try {
+              const { data: currentFile } = await github.rest.repos.getContent({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                path: 'CONTRIBUTORS.md',
+                ref: 'main'
+              });
+
+              await github.rest.repos.createOrUpdateFileContents({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                path: 'CONTRIBUTORS.md',
+                message: 'docs: update contributors [skip ci]',
+                content: Buffer.from(contributorsMarkdown).toString('base64'),
+                sha: currentFile.sha,
+                branch: 'main'
+              });
+            } catch (error) {
+              if (error.status === 404) {
+                await github.rest.repos.createOrUpdateFileContents({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  path: 'CONTRIBUTORS.md',
+                  message: 'docs: create contributors file [skip ci]',
+                  content: Buffer.from(contributorsMarkdown).toString('base64'),
+                  branch: 'main'
+                });
+              }
+            }
