@@ -321,7 +321,14 @@ class SalterBleCoordinator:
         if data[2] == 0xaf:
             _LOGGER.info("Device %s is powering off (received shutdown notification)", self._address)
             self._manual_disconnect = True
-            # The disconnect callback will handle cleanup
+            
+            # Stop polling immediately
+            if self._cancel_poll:
+                self._cancel_poll()
+                self._cancel_poll = None
+                _LOGGER.debug("Stopped keep-alive polling due to power off")
+            
+            # Disconnect will happen naturally when device shuts down
             return
         
         # Temperature data (0x06)
