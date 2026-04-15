@@ -9,10 +9,7 @@ from pathlib import Path
 def update_version(new_version: str) -> None:
     """Update the version in manifest.json."""
     manifest_path = (
-        Path(__file__).parent.parent
-        / "custom_components"
-        / "salter"
-        / "manifest.json"
+        Path(__file__).parent.parent / "custom_components" / "salter" / "manifest.json"
     )
 
     if not manifest_path.exists():
