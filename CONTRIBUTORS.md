@@ -11,7 +11,7 @@ Thank you to all our amazing contributors!
       <sub><b>stuartp44</b></sub>
     </a>
     <br />
-    <sub>54 commits</sub>
+    <sub>56 commits</sub>
   </td>
   <td align="center">
     <a href="https://github.com/apps/github-actions">
@@ -20,7 +20,7 @@ Thank you to all our amazing contributors!
       <sub><b>github-actions[bot]</b></sub>
     </a>
     <br />
-    <sub>1 commits</sub>
+    <sub>2 commits</sub>
   </td>
   <td align="center">
     <a href="https://github.com/semantic-release-bot">
@@ -29,7 +29,7 @@ Thank you to all our amazing contributors!
       <sub><b>semantic-release-bot</b></sub>
     </a>
     <br />
-    <sub>1 commits</sub>
+    <sub>2 commits</sub>
   </td>
 </tr>
 </table>
